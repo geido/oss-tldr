@@ -1,0 +1,24 @@
+repos:
+  - repo: local
+    hooks:
+      - id: backend-checks
+        name: Backend Format + Lint + Type Check
+        entry: backend/scripts/run_checks.sh
+        language: system
+        pass_filenames: false
+
+  - repo: local
+    hooks:
+      - id: typescript-check
+        name: TypeScript Check
+        entry: frontend/node_modules/.bin/tsc --noEmit -p frontend
+        language: node
+        pass_filenames: false
+        files: ^frontend/.*\.(ts|tsx)$
+
+      - id: eslint-check
+        name: ESLint
+        entry: npx eslint frontend --config frontend/eslint.config.js
+        language: node
+        pass_filenames: false
+        files: ^frontend/.*\.(js|jsx|ts|tsx)$

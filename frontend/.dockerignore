@@ -1,0 +1,10 @@
+node_modules
+dist
+build
+.vite
+.turbo
+.next
+.parcel-cache
+.yarn
+.pnp*
+.DS_Store

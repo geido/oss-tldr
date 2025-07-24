@@ -1,0 +1,44 @@
+[tool.poetry]
+name = "oss-tldr"
+version = "0.1.0"
+description = "A FastAPI service to generate TLDRs and deep dives from GitHub issues and PRs"
+authors = ["Diego Pucci <diegopucci.me@gmail.com>"]
+license = "MIT"
+readme = "README.md"
+packages = [{ include = "api" }]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+fastapi = "^0.116.1"          
+uvicorn = { version = "^0.35.0", extras = ["standard"] }
+python-dotenv = "^1.1.1"
+PyGithub = "^2.6.1"
+openai = "^1.97.0" 
+
+[tool.poetry.dev-dependencies]
+pytest = "^7.4"
+black = "^23.9"
+mypy = "^1.7"
+
+[tool.poetry.group.dev.dependencies]
+pre-commit = "^4.2.0"
+ruff = "^0.12.4"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.mypy]
+python_version = "3.11"
+mypy_path = "."
+strict = true
+ignore_missing_imports = true
+show_error_codes = true
+pretty = true
+
+[tool.black]
+line-length = 88
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"

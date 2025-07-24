@@ -1,0 +1,59 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# 🔒 Environment / Config
+.env
+*.env
+*.local
+
+# ⚙️ Python (backend)
+__pycache__/
+*.py[cod]
+*.pyc
+*.pyo
+*.pyd
+*.sqlite3
+*.egg-info/
+.Python
+venv/
+env/
+.venv/
+backend/__pycache__/
+
+# 📦 Node (frontend)
+node_modules/
+dist/
+build/
+.cache/
+frontend/build/
+frontend/dist/
+pnpm-lock.yaml
+
+# Editor and IDE
+.vscode/
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.history/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.swp
+*.swo
+*.bak
+*.tmp
+
+# 💻 OS/system
+.DS_Store
+Thumbs.db
+
+# 🚀 Deploy / Docker
+docker-compose.override.yml
