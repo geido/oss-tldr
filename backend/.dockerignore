@@ -1,10 +1,7 @@
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
 .DS_Store
-.venv
-.mypy_cache
-.pytest_cache
-.poetry
+.venv/
+.mypy_cache/
+.pytest_cache/
 .env

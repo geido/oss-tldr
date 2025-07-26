@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host",
-    "build": "vite build",
+    "build": "NODE_ENV=production vite build",
+    "build:docker": "npm run build",
     "lint": "eslint .",
     "format": "prettier --write .",
     "type": "tsc --noEmit",
@@ -23,6 +24,8 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.30.1",
+    "@rollup/rollup-linux-x64-gnu": "^4.24.4",
+    "@rollup/wasm-node": "^4.24.4",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@types/react-router-dom": "^5.3.3",
@@ -37,8 +40,5 @@
     "prettier": "^3.6.2",
     "typescript": "^5.8.3",
     "vite": "^7.0.5"
-  },
-  "resolutions": {
-    "rollup": "npm:@rollup/wasm-node"
   }
 }

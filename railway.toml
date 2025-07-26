@@ -1,7 +1,8 @@
 [build]
 builder = "DOCKERFILE"
-dockerfilePath = "Dockerfile"
+dockerfilePath = "backend/Dockerfile"
 dockerContext = "."
+dockerBuildTarget = "production"
 watchPatterns = ["**/*.py", "**/*.toml", "**/*.txt"]
 
 [build.args]

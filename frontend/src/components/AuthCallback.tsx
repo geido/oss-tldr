@@ -2,6 +2,8 @@ import React, { useEffect, useState, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Card, Spin, Alert, Typography } from "antd";
 import { useAuth } from "../hooks/useAuth";
+import { apiClient } from "../utils/apiClient";
+import { User } from "../contexts/AuthContext";
 
 const { Title, Text } = Typography;
 
@@ -42,22 +44,11 @@ const AuthCallback: React.FC = () => {
         }
 
         // Exchange code for token
-        const response = await fetch("/api/v1/auth/github/callback", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ code, state }),
-        });
-
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(
-            errorData.detail || "Failed to exchange code for token",
-          );
-        }
-
-        const data = await response.json();
+        const data = await apiClient.post<{ access_token: string; user: User }>(
+          "/auth/github/callback",
+          { code, state },
+          { skipAuth: true },
+        );
 
         // Store authentication data
         setAuthData(data.access_token, data.user);

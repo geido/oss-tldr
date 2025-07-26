@@ -7,8 +7,9 @@ import React, {
   ReactNode,
 } from "react";
 import { UserStorage } from "../utils/userStorage";
+import { apiClient } from "../utils/apiClient";
 
-interface User {
+export interface User {
   id: number;
   login: string;
   name?: string;
@@ -54,21 +55,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const validateToken = useCallback(
     async (authToken: string) => {
       try {
-        const response = await fetch("/api/v1/auth/validate", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${authToken}`,
+        const data = await apiClient.post<{ valid: boolean; user?: User }>(
+          "/auth/validate",
+          {},
+          {
+            skipAuth: false,
+            headers: { Authorization: `Bearer ${authToken}` },
           },
-        });
-
-        if (!response.ok) {
-          console.warn("Token validation request failed:", response.status);
-          // Don't logout on network errors - token might still be valid
-          return;
-        }
-
-        const data = await response.json();
+        );
 
         if (!data.valid) {
           console.log("Token is invalid, logging out");
@@ -89,13 +83,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const login = async () => {
     try {
-      const response = await fetch("/api/v1/auth/github/login");
-
-      if (!response.ok) {
-        throw new Error("Failed to get auth URL");
-      }
-
-      const data = await response.json();
+      const data = await apiClient.get<{ state: string; auth_url: string }>(
+        "/auth/github/login",
+        { skipAuth: true },
+      );
 
       // Store state for CSRF protection
       localStorage.setItem("oauth_state", data.state);

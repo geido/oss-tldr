@@ -6,8 +6,13 @@ class ApiClient {
   private baseUrl: string;
 
   constructor(baseUrl?: string) {
-    // Use environment variable in production, fallback to relative URL in development
-    this.baseUrl = baseUrl || import.meta.env.VITE_API_BASE_URL || "/api/v1";
+    const envUrl = import.meta.env.VITE_API_BASE_URL;
+
+    // Order of resolution:
+    // 1. Passed explicitly (useful for testing)
+    // 2. Vite environment variable (injected at build time)
+    // 3. Fallback to default
+    this.baseUrl = baseUrl || envUrl || "/api/v1";
   }
 
   private getAuthToken(): string | null {
@@ -44,7 +49,6 @@ class ApiClient {
     });
 
     if (response.status === 401) {
-      // Token expired or invalid - trigger logout
       localStorage.removeItem("oss_tldr_auth_token");
       localStorage.removeItem("oss_tldr_user");
       window.location.reload();
@@ -90,7 +94,6 @@ class ApiClient {
     return response;
   }
 
-  // Convenience methods
   async get<T>(endpoint: string, options: ApiRequestInit = {}): Promise<T> {
     return this.request<T>(endpoint, { ...options, method: "GET" });
   }
@@ -120,8 +123,5 @@ class ApiClient {
   }
 }
 
-// Export singleton instance
 export const apiClient = new ApiClient();
-
-// Export class for testing
 export { ApiClient };
