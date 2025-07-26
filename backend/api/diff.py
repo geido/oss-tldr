@@ -1,6 +1,7 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 
+from middleware.auth import AuthenticatedRequest, get_current_user
 from models.github import PatchItem
 from services.diff_explainer import explain_diff
 from services.github_client import get_pr_diff, get_repo
@@ -28,10 +29,12 @@ class DiffResponse(BaseModel):
 
 
 @router.post("/patches", response_model=PatchesResponse)
-async def get_patches(payload: PatchesRequest) -> PatchesResponse:
+async def get_patches(
+    payload: PatchesRequest, auth: AuthenticatedRequest = Depends(get_current_user)
+) -> PatchesResponse:
     try:
         owner, repo = parse_repo_url(payload.repo_url)
-        github_repo = get_repo(owner, repo)
+        github_repo = get_repo(auth.github, owner, repo)
 
         patch_list: list[PatchItem] = await get_pr_diff(
             github_repo, payload.pull_request
@@ -44,7 +47,9 @@ async def get_patches(payload: PatchesRequest) -> PatchesResponse:
 
 
 @router.post("/diff", response_model=DiffResponse)
-async def get_diff(payload: DiffRequest) -> DiffResponse:
+async def get_diff(
+    payload: DiffRequest, auth: AuthenticatedRequest = Depends(get_current_user)
+) -> DiffResponse:
     try:
         explanation: str = await explain_diff(payload.file, payload.patch)
 

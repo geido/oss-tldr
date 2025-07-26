@@ -13,6 +13,8 @@ import {
 } from "antd";
 import { DiffOutlined, FileSearchOutlined } from "@ant-design/icons";
 import { GitHubItem } from "../../types/github";
+import { apiClient } from "../../utils/apiClient";
+import { PatchesResponse, DiffResponse } from "../../types/api";
 import styled from "styled-components";
 import ReactMarkdown from "react-markdown";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
@@ -35,14 +37,67 @@ type Props = {
 
 const StyledListItem = styled(List.Item)`
   .ant-list-item-action {
-    margin-top: 16px;
+    margin-top: ${({ theme }) => theme.token.marginSM}px;
     display: flex;
     padding: 0;
+    flex-wrap: wrap;
+    gap: ${({ theme }) => theme.token.paddingXS}px;
+
+    @media (min-width: 768px) {
+      margin-top: ${({ theme }) => theme.token.margin}px;
+      gap: ${({ theme }) => theme.token.paddingSM}px;
+    }
 
     > li {
       list-style: none;
-      margin-inline-end: 12px;
+      margin-inline-end: 8px;
+
+      @media (min-width: 768px) {
+        margin-inline-end: 12px;
+      }
     }
+
+    button {
+      font-size: 0.8rem;
+
+      @media (min-width: 768px) {
+        font-size: 0.9rem;
+      }
+    }
+  }
+
+  .ant-list-item-meta-title {
+    font-size: 0.9rem;
+    line-height: 1.4;
+
+    @media (min-width: 768px) {
+      font-size: 1rem;
+      line-height: 1.5;
+    }
+  }
+
+  .ant-list-item-meta-description {
+    font-size: 0.8rem;
+
+    @media (min-width: 768px) {
+      font-size: 0.9rem;
+    }
+  }
+`;
+
+const TruncatedFilepath = styled(Text)`
+  max-width: 550px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: inline-block;
+
+  @media (max-width: 768px) {
+    max-width: 350px;
+  }
+
+  @media (max-width: 480px) {
+    max-width: 200px;
   }
 `;
 
@@ -66,18 +121,11 @@ export const IssueListItem: React.FC<Props> = ({ repo, item }) => {
     setFileStates({});
 
     try {
-      const res = await fetch("/api/v1/patches", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          repo_url: repo,
-          pull_request: String(item.number),
-        }),
+      const data = await apiClient.post<PatchesResponse>("patches", {
+        repo_url: repo,
+        pull_request: String(item.number),
       });
-
-      if (!res.ok) throw new Error("Failed to fetch file patches");
-      const data = await res.json();
-      const patches: { file: string; patch: string }[] = data.patches;
+      const patches = data.patches;
 
       const initialState: Record<string, DiffPanelState> = {};
       patches.forEach(({ file, patch }) => {
@@ -90,35 +138,32 @@ export const IssueListItem: React.FC<Props> = ({ repo, item }) => {
       setPatchesLoading(false); // Done loading patches
 
       await Promise.all(
-        patches.map(({ file, patch }) =>
-          fetch("/api/v1/diff", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ file, patch }),
-          })
-            .then((res) => res.json())
-            .then((data) => {
-              setFileStates((prev) => ({
-                ...prev,
-                [file]: {
-                  ...prev[file],
-                  loading: false,
-                  explanation: data.explanation,
-                },
-              }));
-            })
-            .catch((err) => {
-              console.error("Failed diff summary for", file, err);
-              setFileStates((prev) => ({
-                ...prev,
-                [file]: {
-                  ...prev[file],
-                  loading: false,
-                  explanation: "⚠️ Failed to load diff summary.",
-                },
-              }));
-            }),
-        ),
+        patches.map(async ({ file, patch }) => {
+          try {
+            const data = await apiClient.post<DiffResponse>("diff", {
+              file,
+              patch,
+            });
+            setFileStates((prev) => ({
+              ...prev,
+              [file]: {
+                ...prev[file],
+                loading: false,
+                explanation: data.explanation,
+              },
+            }));
+          } catch (err) {
+            console.error("Failed diff summary for", file, err);
+            setFileStates((prev) => ({
+              ...prev,
+              [file]: {
+                ...prev[file],
+                loading: false,
+                explanation: "⚠️ Failed to load diff summary.",
+              },
+            }));
+          }
+        }),
       );
     } catch (e) {
       console.error("Error initializing diff:", e);
@@ -132,13 +177,9 @@ export const IssueListItem: React.FC<Props> = ({ repo, item }) => {
     setDeepDiveContent(""); // reset content
 
     try {
-      const res = await fetch("/api/v1/deepdive", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          repo_url: repo,
-          issue: String(item.number),
-        }),
+      const res = await apiClient.postStream("deepdive", {
+        repo_url: repo,
+        issue: String(item.number),
       });
 
       if (!res.ok || !res.body) {
@@ -147,13 +188,10 @@ export const IssueListItem: React.FC<Props> = ({ repo, item }) => {
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder("utf-8");
-      let fullText = "";
-
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         const chunk = decoder.decode(value, { stream: true });
-        fullText += chunk;
         setDeepDiveContent((prev) => prev + chunk); // progressively update
       }
     } catch (e) {
@@ -188,9 +226,13 @@ export const IssueListItem: React.FC<Props> = ({ repo, item }) => {
           </Button>,
         ].filter(Boolean)}
         extra={
-          <div style={{ textAlign: "right" }}>
-            <Tooltip title="Comments">💬 {item.comments}</Tooltip>{" "}
-            <Tooltip title="Reactions">👍 {item.reactions ?? 0}</Tooltip>
+          <div style={{ textAlign: "right", fontSize: "0.8rem" }}>
+            <Tooltip title="Comments">
+              <span style={{ marginRight: "0.5rem" }}>💬 {item.comments}</span>
+            </Tooltip>
+            <Tooltip title="Reactions">
+              <span>👍 {item.reactions ?? 0}</span>
+            </Tooltip>
           </div>
         }
       >
@@ -228,14 +270,16 @@ export const IssueListItem: React.FC<Props> = ({ repo, item }) => {
           <div
             style={{
               background: "#f9f9f9",
-              borderRadius: 8,
-              padding: "0.75rem 1rem",
-              marginTop: 12,
-              fontSize: 14,
-              lineHeight: 1.5,
+              borderRadius: 6,
+              padding: "0.5rem 0.75rem",
+              marginTop: 8,
+              fontSize: 13,
+              lineHeight: 1.4,
             }}
           >
-            <Paragraph style={{ marginBottom: 0 }}>{item.summary}</Paragraph>
+            <Paragraph style={{ marginBottom: 0, fontSize: "inherit" }}>
+              {item.summary}
+            </Paragraph>
           </div>
         )}
       </StyledListItem>
@@ -268,7 +312,9 @@ export const IssueListItem: React.FC<Props> = ({ repo, item }) => {
                 header={
                   <Space>
                     {state.loading && <Skeleton.Button active size="small" />}
-                    <Text>{filepath}</Text>
+                    <TruncatedFilepath title={filepath}>
+                      {filepath}
+                    </TruncatedFilepath>
                   </Space>
                 }
                 collapsible={state.loading ? "disabled" : "header"}
@@ -326,8 +372,8 @@ export const IssueListItem: React.FC<Props> = ({ repo, item }) => {
 
             <ReactMarkdown
               components={{
-                // @ts-ignore
-                code({ node, inline, className, children, ...props }) {
+                // @ts-expect-error - ReactMarkdown types are not fully compatible with react-syntax-highlighter
+                code({ inline, className, children, ...props }) {
                   const match = /language-(\w+)/.exec(className || "");
                   return !inline && match ? (
                     <SyntaxHighlighter

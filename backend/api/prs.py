@@ -1,8 +1,9 @@
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 
+from middleware.auth import AuthenticatedRequest, get_current_user
 from models.github import GitHubItem
 from services.github_client import get_repo, get_repo_activity, score_sort_items
 from services.issue_summary import summarize_items
@@ -23,13 +24,17 @@ class PRsResponse(BaseModel):
 
 
 @router.post("/prs", response_model=PRsResponse)
-async def get_prs(payload: PRsRequest) -> PRsResponse:
+async def get_prs(
+    payload: PRsRequest, auth: AuthenticatedRequest = Depends(get_current_user)
+) -> PRsResponse:
     try:
         owner, repo = parse_repo_url(payload.repo_url)
-        github_repo = get_repo(owner, repo)
+        github_repo = get_repo(auth.github, owner, repo)
 
         start_date, end_date = resolve_timeframe(payload.timeframe)
-        prs = await get_repo_activity(github_repo, "pr", start_date, end_date)
+        prs = await get_repo_activity(
+            auth.github, github_repo, "pr", start_date, end_date
+        )
         scored_prs = score_sort_items(github_repo, prs)
 
         github_prs = [serialize_github_item(pr) for _, pr in scored_prs]

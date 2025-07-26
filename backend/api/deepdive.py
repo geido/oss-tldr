@@ -1,12 +1,13 @@
 import asyncio
 from typing import cast
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from github.PaginatedList import PaginatedList
 from github.PullRequestReview import PullRequestReview
 from pydantic import BaseModel
 
+from middleware.auth import AuthenticatedRequest, get_current_user
 from services.deepdive_generator import generate_deep_dive
 from services.github_client import (
     get_pr_reviews,
@@ -23,10 +24,12 @@ class DeepDiveRequest(BaseModel):
 
 
 @router.post("/deepdive")
-async def get_deepdive(payload: DeepDiveRequest) -> StreamingResponse:
+async def get_deepdive(
+    payload: DeepDiveRequest, auth: AuthenticatedRequest = Depends(get_current_user)
+) -> StreamingResponse:
     try:
         owner, repo_name = parse_repo_url(payload.repo_url)
-        github_repo = get_repo(owner, repo_name)
+        github_repo = get_repo(auth.github, owner, repo_name)
 
         issue = await asyncio.to_thread(github_repo.get_issue, int(payload.issue))
 

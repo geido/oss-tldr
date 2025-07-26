@@ -11,10 +11,8 @@ from github.PullRequest import PullRequest
 from github.PullRequestReview import PullRequestReview
 from github.Repository import Repository
 
-from config import COMMON_GITHUB_BOTS, GITHUB_TOKEN, MAX_ITEMS_PER_SECTION
+from config import COMMON_GITHUB_BOTS, MAX_ITEMS_PER_SECTION
 from models.github import PatchItem
-
-github = Github(GITHUB_TOKEN)
 
 
 def is_bot(user_login: str) -> bool:
@@ -22,7 +20,7 @@ def is_bot(user_login: str) -> bool:
     return user_login in COMMON_GITHUB_BOTS
 
 
-def is_near_rate_limit(threshold: int = 100) -> bool:
+def is_near_rate_limit(github: Github, threshold: int = 100) -> bool:
     core_limit = github.get_rate_limit().core
     return core_limit.remaining < threshold
 
@@ -132,11 +130,39 @@ def get_pr_reviews(
     return reviews
 
 
-def get_repo(owner: str, repo: str) -> Repository:
+def get_repo(github: Github, owner: str, repo: str) -> Repository:
     """
-    Fetch a GitHub repository object.
+    Fetch a GitHub repository object with enhanced error handling.
     """
-    return github.get_repo(f"{owner}/{repo}")
+    from github.GithubException import GithubException
+
+    try:
+        return github.get_repo(f"{owner}/{repo}")
+    except GithubException as e:
+        # Enhanced error messages for common access issues
+        if e.status == 404:
+            raise ValueError(f"Repository '{owner}/{repo}' not found or not accessible")
+        elif e.status == 403:
+            if "rate limit" in str(e).lower():
+                raise ValueError(
+                    "GitHub API rate limit exceeded. Please try again later."
+                )
+            elif "third-party" in str(e).lower() or "oauth" in str(e).lower():
+                raise ValueError(
+                    f"Repository '{owner}/{repo}' has restricted third-party access. Please check the organization's OAuth settings or contact the repository owner."
+                )
+            elif "private" in str(e).lower():
+                raise ValueError(
+                    f"Repository '{owner}/{repo}' is private and you don't have access"
+                )
+            else:
+                raise ValueError(
+                    f"Access denied to repository '{owner}/{repo}'. This may be due to organization policies or insufficient permissions."
+                )
+        elif e.status == 401:
+            raise ValueError("GitHub authentication failed. Please re-authenticate.")
+        else:
+            raise ValueError(f"GitHub API error: {e.data.get('message', str(e))}")
 
 
 async def fetch_item(
@@ -166,6 +192,7 @@ async def fetch_item(
 
 
 async def search_github_items(
+    github: Github,
     repo: Repository,
     item_type: Optional[Literal["pr", "issue", "all"]] = None,
     created_range: Optional[tuple[datetime, datetime]] = None,
@@ -190,7 +217,7 @@ async def search_github_items(
         A deduplicated list of GitHub Issue or PullRequest objects.
     """
 
-    if is_near_rate_limit(rate_limit_buffer):
+    if is_near_rate_limit(github, rate_limit_buffer):
         print("⚠️  Rate limit too low, skipping search.")
         return []
 
@@ -212,8 +239,33 @@ async def search_github_items(
         )
         items = data.get("items", [])
     except Exception as e:
+        from github.GithubException import GithubException
+
+        if isinstance(e, GithubException):
+            if e.status == 403:
+                if "third-party" in str(e).lower() or "oauth" in str(e).lower():
+                    raise ValueError(
+                        f"Repository '{repo.full_name}' has restricted third-party access. Please check the organization's OAuth settings."
+                    )
+                elif "rate limit" in str(e).lower():
+                    raise ValueError(
+                        "GitHub API rate limit exceeded. Please try again later."
+                    )
+                else:
+                    raise ValueError(
+                        f"Access denied to repository '{repo.full_name}'. This may be due to organization policies."
+                    )
+            elif e.status == 404:
+                raise ValueError(
+                    f"Repository '{repo.full_name}' not found or not accessible"
+                )
+            elif e.status == 401:
+                raise ValueError(
+                    "GitHub authentication failed. Please re-authenticate."
+                )
+
         print(f"❌ GitHub search failed: {e}")
-        return []
+        raise ValueError(f"Failed to search repository '{repo.full_name}': {str(e)}")
 
     raw_tasks = [fetch_item(repo, raw) for raw in items]
     fetched_items = await asyncio.gather(*raw_tasks)
@@ -229,7 +281,11 @@ async def search_github_items(
 
 
 def get_active_contributors(
-    repo: Repository, since: datetime, until: datetime, max_contributors: int = 5
+    github: Github,
+    repo: Repository,
+    since: datetime,
+    until: datetime,
+    max_contributors: int = 5,
 ) -> list[dict[str, Any]]:
     """
     Returns the top contributors by number of commits in the given timeframe.
@@ -318,6 +374,7 @@ def score_sort_items(
 
 
 async def get_repo_activity(
+    github: Github,
     repo: Repository,
     item_type: Literal["pr", "issue", "all"],
     start_date: datetime,
@@ -330,6 +387,7 @@ async def get_repo_activity(
     """
 
     query_args: dict[str, Any] = {
+        "github": github,
         "repo": repo,
         "created_range": (start_date, end_date),
         "state": "all",

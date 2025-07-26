@@ -1,4 +1,10 @@
 repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+
   - repo: local
     hooks:
       - id: backend-checks
@@ -11,14 +17,14 @@ repos:
     hooks:
       - id: typescript-check
         name: TypeScript Check
-        entry: frontend/node_modules/.bin/tsc --noEmit -p frontend
-        language: node
+        entry: bash -c "cd frontend && npm run type"
+        language: system
         pass_filenames: false
         files: ^frontend/.*\.(ts|tsx)$
 
       - id: eslint-check
         name: ESLint
-        entry: npx eslint frontend --config frontend/eslint.config.js
-        language: node
+        entry: bash -c "cd frontend && npm run lint"
+        language: system
         pass_filenames: false
         files: ^frontend/.*\.(js|jsx|ts|tsx)$

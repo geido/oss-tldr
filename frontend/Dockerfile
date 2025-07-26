@@ -2,10 +2,13 @@ FROM node:20-slim
 
 WORKDIR /app
 
-COPY package.json package-lock.json ./
+# Copy package files
+COPY package.json ./
 
-RUN npm ci
+# Install dependencies (use npm install instead of ci to resolve any lock file issues)
+RUN npm install
 
+# Copy source code
 COPY . .
 
 EXPOSE 3000

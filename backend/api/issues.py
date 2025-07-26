@@ -1,8 +1,9 @@
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 
+from middleware.auth import AuthenticatedRequest, get_current_user
 from models.github import GitHubItem
 from services.github_client import get_repo, get_repo_activity, score_sort_items
 from services.issue_summary import summarize_items
@@ -23,14 +24,18 @@ class IssuesResponse(BaseModel):
 
 
 @router.post("/issues", response_model=IssuesResponse)
-async def get_issues(payload: IssuesRequest) -> IssuesResponse:
+async def get_issues(
+    payload: IssuesRequest, auth: AuthenticatedRequest = Depends(get_current_user)
+) -> IssuesResponse:
     try:
         owner, repo = parse_repo_url(payload.repo_url)
-        github_repo = get_repo(owner, repo)
+        github_repo = get_repo(auth.github, owner, repo)
 
         start_date, end_date = resolve_timeframe(payload.timeframe)
 
-        issues = await get_repo_activity(github_repo, "issue", start_date, end_date)
+        issues = await get_repo_activity(
+            auth.github, github_repo, "issue", start_date, end_date
+        )
         scored_issues = score_sort_items(github_repo, issues)
 
         github_issues = [serialize_github_item(issue) for _, issue in scored_issues]

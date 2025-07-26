@@ -1,10 +1,11 @@
 import asyncio
 from typing import Literal, cast
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 
 from config import MAX_ITEMS_PER_SECTION
+from middleware.auth import AuthenticatedRequest, get_current_user
 from models.github import ContributorActivity
 from services.github_client import get_active_contributors, get_repo, get_repo_activity
 from services.issue_summary import summarize_items
@@ -26,18 +27,23 @@ class PeopleResponse(BaseModel):
 
 
 @router.post("/people", response_model=PeopleResponse)
-async def get_people(payload: PeopleRequest) -> PeopleResponse:
+async def get_people(
+    payload: PeopleRequest, auth: AuthenticatedRequest = Depends(get_current_user)
+) -> PeopleResponse:
     try:
         owner, repo = parse_repo_url(payload.repo_url)
-        github_repo = get_repo(owner, repo)
+        github_repo = get_repo(auth.github, owner, repo)
 
         start_date, end_date = resolve_timeframe(payload.timeframe)
-        contributors = get_active_contributors(github_repo, start_date, end_date)
+        contributors = get_active_contributors(
+            auth.github, github_repo, start_date, end_date
+        )
 
         async def enrich_contributor(
             contributor: dict[str, str]
         ) -> ContributorActivity:
             items = await get_repo_activity(
+                auth.github,
                 github_repo,
                 item_type="all",
                 start_date=start_date,

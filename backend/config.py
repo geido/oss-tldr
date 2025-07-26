@@ -4,10 +4,22 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
+# GitHub OAuth settings
+GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID")
+GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET")
+
+# JWT settings
+JWT_SECRET = os.getenv("JWT_SECRET", "your-secret-key-change-in-production")
+JWT_ALGORITHM = "HS256"
+JWT_EXPIRE_HOURS = 24
+
+# OpenAI settings
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 MAX_ITEMS_PER_SECTION = int(os.getenv("MAX_ITEMS_PER_SECTION", 10))
+
+# CORS settings
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 COMMON_GITHUB_BOTS = {
     # Dependency / update bots
     "dependabot[bot]",
