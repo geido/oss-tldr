@@ -1,0 +1,16 @@
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+dockerContext = "."
+watchPatterns = ["**/*.py", "**/*.toml", "**/*.txt"]
+
+[build.args]
+BUILDKIT_INLINE_CACHE = "1"
+DOCKER_BUILDKIT = "1"
+
+[deploy]
+startCommand = "uvicorn main:app --host 0.0.0.0 --port $PORT"
+healthcheckPath = "/health"
+healthcheckTimeout = 300
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10

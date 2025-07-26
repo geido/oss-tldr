@@ -42,9 +42,33 @@ export type PeopleData = {
   issues: GitHubItem[];
 };
 
+export type Timeframe = "last_day" | "last_week" | "last_month" | "last_year";
+
 export type TLDRData = {
   prs: GitHubItem[] | null;
   issues: GitHubItem[] | null;
   people: PeopleData[] | null;
   tldr: string | null;
+};
+
+export type StoredTLDRReport = {
+  id: string; // `${repo}:${timeframe}`
+  repo: string;
+  timeframe: Timeframe;
+  data: TLDRData;
+  generatedAt: string; // ISO timestamp
+  version: number; // For future migration
+};
+
+export type RepoSummary = {
+  name: string;
+  full_name: string;
+  description: string | null;
+  html_url: string;
+  private: boolean;
+  fork: boolean;
+  archived: boolean;
+  language: string | null;
+  stargazers_count: number;
+  updated_at: string;
 };

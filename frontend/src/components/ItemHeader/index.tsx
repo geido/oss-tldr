@@ -1,4 +1,5 @@
-import { Space, Tag, Tooltip } from "antd";
+import { Tag, Tooltip } from "antd";
+import styled from "styled-components";
 
 type ItemHeaderProps = {
   number: number;
@@ -6,6 +7,39 @@ type ItemHeaderProps = {
   state: string;
   merged?: boolean; // optional — only relevant for PRs
 };
+
+const ResponsiveHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: ${({ theme }) => theme.token.paddingXS}px;
+  min-width: 0;
+`;
+
+const TitleContainer = styled.div`
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: ${({ theme }) => theme.token.paddingXS}px;
+`;
+
+const ResponsiveTitle = styled.span`
+  max-width: 180px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: inline-block;
+  vertical-align: middle;
+
+  @media (min-width: 480px) {
+    max-width: 250px;
+  }
+
+  @media (min-width: 768px) {
+    max-width: 350px;
+  }
+`;
 
 export const ItemHeader: React.FC<ItemHeaderProps> = ({
   number,
@@ -17,31 +51,14 @@ export const ItemHeader: React.FC<ItemHeaderProps> = ({
   const color = state === "open" ? "green" : merged ? "purple" : "red";
 
   return (
-    <div
-      style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-      }}
-    >
-      <Space>
+    <ResponsiveHeader>
+      <TitleContainer>
         <strong>#{number}</strong>
         <Tooltip title={title}>
-          <span
-            style={{
-              maxWidth: 350,
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              display: "inline-block",
-              verticalAlign: "middle",
-            }}
-          >
-            {title}
-          </span>
+          <ResponsiveTitle>{title}</ResponsiveTitle>
         </Tooltip>
-      </Space>
+      </TitleContainer>
       <Tag color={color}>{status}</Tag>
-    </div>
+    </ResponsiveHeader>
   );
 };

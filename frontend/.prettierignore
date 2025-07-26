@@ -1,0 +1,36 @@
+# Build outputs
+dist/
+build/
+.cache/
+
+# Dependencies
+node_modules/
+
+# Generated files
+*.d.ts
+coverage/
+
+# Package files
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+
+# Environment and config
+.env*
+*.local
+
+# Editor files
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+.temp/
