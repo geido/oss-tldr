@@ -1,5 +1,11 @@
 // API Response Types
-import { GitHubItem, PeopleData } from "./github";
+import {
+  GitHubItem,
+  PeopleData,
+  Timeframe,
+  GroupDefinition,
+  GroupRepoReport,
+} from "./github";
 
 export interface PatchItem {
   file: string;
@@ -46,4 +52,16 @@ export interface PullRequestsResponse {
 
 export interface IssuesResponse {
   issues: GitHubItem[];
+}
+
+export interface GroupListResponse {
+  groups: GroupDefinition[];
+}
+
+export interface GroupReportResponse {
+  group_id?: string | null;
+  name: string;
+  timeframe: Timeframe;
+  tldr: string | null;
+  repos: GroupRepoReport[];
 }

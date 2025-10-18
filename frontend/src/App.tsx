@@ -4,26 +4,27 @@ import { ConfigProvider, theme } from "antd";
 import { ThemeProvider } from "styled-components";
 import DashboardView from "./views/DashboardView";
 import TLDRView from "./views/TLDRView";
+import GroupTLDRView from "./views/GroupTLDRView";
 import AuthCallback from "./components/AuthCallback";
 import AuthGuard from "./components/AuthGuard";
 import { AuthProvider } from "./contexts/AuthContext";
-import { Timeframe } from "./types/github";
+import { DigestTarget, Timeframe } from "./types/github";
 
 const AppContent: React.FC = () => {
   const [hasStarted, setHasStarted] = useState(false);
-  const [repo, setRepo] = useState("");
+  const [target, setTarget] = useState<DigestTarget | null>(null);
   const [initialTimeframe, setInitialTimeframe] =
     useState<Timeframe>("last_week");
 
-  const handleStart = (repo: string, timeframe: Timeframe) => {
+  const handleStart = (selection: DigestTarget, timeframe: Timeframe) => {
     setHasStarted(true);
-    setRepo(repo);
+    setTarget(selection);
     setInitialTimeframe(timeframe);
   };
 
   const handleReset = () => {
     setHasStarted(false);
-    setRepo("");
+    setTarget(null);
     setInitialTimeframe("last_week");
   };
 
@@ -37,9 +38,16 @@ const AppContent: React.FC = () => {
             element={
               <AuthGuard>
                 {!hasStarted && <DashboardView onStartDigest={handleStart} />}
-                {hasStarted && (
+                {hasStarted && target?.kind === "repo" && (
                   <TLDRView
-                    repo={repo}
+                    repo={target.repo}
+                    onReset={handleReset}
+                    initialTimeframe={initialTimeframe}
+                  />
+                )}
+                {hasStarted && target?.kind === "group" && (
+                  <GroupTLDRView
+                    group={target}
                     onReset={handleReset}
                     initialTimeframe={initialTimeframe}
                   />

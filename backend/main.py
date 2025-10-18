@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import os
 
-from api import auth, deepdive, diff, issues, people, prs, repos, tldr
+from api import auth, deepdive, diff, groups, issues, people, prs, repos, tldr
 
 app = FastAPI(title="OSS TL;DR Backend")
 
@@ -33,3 +33,4 @@ app.include_router(people.router, prefix="/api/v1", tags=["people"])
 app.include_router(diff.router, prefix="/api/v1", tags=["diff"])
 app.include_router(deepdive.router, prefix="/api/v1", tags=["deepdive"])
 app.include_router(repos.router, prefix="/api/v1", tags=["repos"])
+app.include_router(groups.router, prefix="/api/v1", tags=["groups"])

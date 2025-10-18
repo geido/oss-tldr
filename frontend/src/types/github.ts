@@ -72,3 +72,38 @@ export type RepoSummary = {
   stargazers_count: number;
   updated_at: string;
 };
+
+export type GroupDefinition = {
+  id: string;
+  name: string;
+  description?: string | null;
+  repos: string[];
+};
+
+export type GroupRepoReport = {
+  full_name: string;
+  html_url: string;
+  prs: GitHubItem[];
+  issues: GitHubItem[];
+  tldr?: string | null;
+};
+
+export type GroupReportData = {
+  tldr: string | null;
+  repos: GroupRepoReport[];
+};
+
+export type StoredGroupReport = {
+  id: string;
+  groupId?: string | null;
+  name: string;
+  repos: string[];
+  timeframe: Timeframe;
+  data: GroupReportData;
+  generatedAt: string;
+  version: number;
+};
+
+export type DigestTarget =
+  | { kind: "repo"; repo: string; label: string }
+  | { kind: "group"; id?: string | null; name: string; repos: string[]; preset?: boolean };
