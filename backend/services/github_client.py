@@ -1,7 +1,7 @@
 import asyncio
 from collections import defaultdict
 from datetime import datetime, timedelta
-from typing import Any, Literal, Optional, Union
+from typing import Literal, Optional, Union
 
 from github import Github
 from github.File import File as PullRequestFile
@@ -166,7 +166,7 @@ def get_repo(github: Github, owner: str, repo: str) -> Repository:
 
 
 async def fetch_item(
-    repo: Repository, raw: dict[str, Any]
+    repo: Repository, raw: dict[str, object]
 ) -> Optional[Union[Issue, PullRequest]]:
     try:
         item = await asyncio.to_thread(repo.get_issue, int(raw["number"]))
@@ -293,7 +293,7 @@ def get_active_contributors(
     since: datetime,
     until: datetime,
     max_contributors: int = 5,
-) -> list[dict[str, Any]]:
+) -> list[dict[str, str | int]]:
     """
     Returns the top contributors by number of commits in the given timeframe.
     Uses GitHub API pagination efficiently.
@@ -315,7 +315,7 @@ def get_active_contributors(
         :max_contributors
     ]
 
-    contributors: list[dict[str, Any]] = []
+    contributors: list[dict[str, str | int]] = []
 
     for username, count in top_usernames:
         try:
@@ -388,14 +388,14 @@ async def get_repo_activity(
     item_type: Literal["pr", "issue", "all"],
     start_date: datetime,
     end_date: datetime,
-    **kwargs: Any,
+    **kwargs: object,
 ) -> list[Union[Issue, PullRequest]]:
     """
     Fetch GitHub pull requests or issues for a given repo and date range,
     prioritizing those with the most engagement.
     """
 
-    query_args: dict[str, Any] = {
+    query_args: dict[str, object] = {
         "github": github,
         "repo": repo,
         "created_range": (start_date, end_date),

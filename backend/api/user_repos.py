@@ -1,5 +1,5 @@
 """User repository tracking API endpoints."""
-from typing import List, Dict, Any
+from typing import List
 
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
@@ -21,12 +21,26 @@ class TrackRepoRequest(BaseModel):
     repo_url: str
 
 
+class RepositorySummary(BaseModel):
+    """Summary of repository data."""
+
+    id: int
+    full_name: str
+    owner: str
+    name: str
+    description: str | None
+    html_url: str
+    is_private: bool
+    language: str | None
+    stargazers_count: int
+
+
 class TrackRepoResponse(BaseModel):
     """Response after tracking a repository."""
 
     success: bool
     message: str
-    repository: Dict[str, Any]
+    repository: RepositorySummary
 
 
 class UntrackRepoRequest(BaseModel):
@@ -45,7 +59,7 @@ class UntrackRepoResponse(BaseModel):
 class UserReposResponse(BaseModel):
     """Response with user's tracked repositories."""
 
-    repositories: List[Dict[str, Any]]
+    repositories: List[RepositorySummary]
 
 
 @router.get("/users/me/repositories")
@@ -65,17 +79,17 @@ async def get_user_repositories(
 
         return UserReposResponse(
             repositories=[
-                {
-                    "id": repo.id,
-                    "full_name": repo.full_name,
-                    "owner": repo.owner,
-                    "name": repo.name,
-                    "description": repo.description,
-                    "html_url": repo.html_url,
-                    "is_private": repo.is_private,
-                    "language": repo.language,
-                    "stargazers_count": repo.stargazers_count,
-                }
+                RepositorySummary(
+                    id=repo.id,
+                    full_name=repo.full_name,
+                    owner=repo.owner,
+                    name=repo.name,
+                    description=repo.description,
+                    html_url=repo.html_url,
+                    is_private=repo.is_private,
+                    language=repo.language,
+                    stargazers_count=repo.stargazers_count,
+                )
                 for repo in repositories
             ]
         )
@@ -136,17 +150,17 @@ async def track_repository(
         return TrackRepoResponse(
             success=True,
             message=f"Successfully tracking {full_name}",
-            repository={
-                "id": repo_record.id,
-                "full_name": repo_record.full_name,
-                "owner": repo_record.owner,
-                "name": repo_record.name,
-                "description": repo_record.description,
-                "html_url": repo_record.html_url,
-                "is_private": repo_record.is_private,
-                "language": repo_record.language,
-                "stargazers_count": repo_record.stargazers_count,
-            },
+            repository=RepositorySummary(
+                id=repo_record.id,
+                full_name=repo_record.full_name,
+                owner=repo_record.owner,
+                name=repo_record.name,
+                description=repo_record.description,
+                html_url=repo_record.html_url,
+                is_private=repo_record.is_private,
+                language=repo_record.language,
+                stargazers_count=repo_record.stargazers_count,
+            ),
         )
 
     except Exception as e:

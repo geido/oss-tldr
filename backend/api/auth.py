@@ -1,6 +1,6 @@
 import secrets
 from datetime import datetime, timedelta
-from typing import Any, Dict
+from typing import TypedDict
 from urllib.parse import urlencode
 
 import httpx
@@ -35,13 +35,21 @@ class CallbackRequest(BaseModel):
 
 class CallbackResponse(BaseModel):
     access_token: str
-    user: Dict[str, Any]
+    user: UserPayload
     expires_at: str
+
+
+class UserPayload(TypedDict):
+    id: int
+    login: str
+    name: str | None
+    avatar_url: str | None
+    email: str | None
 
 
 class ValidateResponse(BaseModel):
     valid: bool
-    user: Dict[str, Any] | None = None
+    user: UserPayload | None = None
     expires_at: str | None = None
 
 

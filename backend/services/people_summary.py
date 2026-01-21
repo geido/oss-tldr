@@ -1,6 +1,6 @@
 """Service for generating people/contributor summaries from items."""
 from collections import defaultdict
-from typing import Any, Dict, List, cast
+from typing import Dict, List, cast
 
 from config import MAX_ITEMS_PER_SECTION
 from models.github import GitHubItem
@@ -10,7 +10,7 @@ from services.tldr_generator import tldr
 async def generate_people_summaries(
     prs: List[GitHubItem],
     issues: List[GitHubItem],
-) -> List[Dict[str, Any]]:
+) -> List[Dict[str, object]]:
     """
     Generate contributor summaries from already-fetched and summarized PRs and issues.
 
@@ -33,7 +33,7 @@ async def generate_people_summaries(
         - total_items: Total number of contributions
     """
     # Group items by author
-    contributors: Dict[str, Dict[str, Any]] = defaultdict(
+    contributors: Dict[str, Dict[str, object]] = defaultdict(
         lambda: {
             "username": "",
             "avatar_url": "",
@@ -108,12 +108,12 @@ async def generate_people_summaries(
 
 
 async def enrich_contributor_with_github_activity(
-    github_client: Any,
-    github_repo: Any,
+    github_client: object,
+    github_repo: object,
     contributor: Dict[str, str],
-    start_date: Any,
-    end_date: Any,
-) -> Dict[str, Any]:
+    start_date: object,
+    end_date: object,
+) -> Dict[str, object]:
     """
     Enrich a contributor with their GitHub activity.
 

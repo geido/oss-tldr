@@ -1,5 +1,5 @@
 """Reports repository with section-level caching support."""
-from typing import Optional, Literal, Any
+from typing import Literal, Optional, Union
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -76,7 +76,7 @@ class ReportsRepository(BaseRepository[Report]):
         timeframe: str,
         section: SectionType,
         skip_expiration_check: bool = False,
-    ) -> Optional[Any]:
+    ) -> Optional[Union[dict, list, str]]:
         """
         Get cached section data if it exists and is fresh (< 1 hour old).
 
@@ -133,7 +133,7 @@ class ReportsRepository(BaseRepository[Report]):
         self,
         report_id: int,
         section: SectionType,
-        data: Any,
+        data: Union[dict, list, str],
     ) -> Report:
         """
         Update a specific section of a report with new data.

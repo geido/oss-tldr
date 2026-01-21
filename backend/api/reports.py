@@ -1,5 +1,5 @@
 """Progressive report endpoints with section-level database caching."""
-from typing import Literal, Any, Dict
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Depends, Query
 from fastapi.responses import StreamingResponse
@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.connection import get_db
 from middleware.auth import AuthenticatedRequest, get_current_user
-from models.github import GitHubItem
+from models.github import ContributorActivity, GitHubItem
 from repositories.repositories import RepositoriesRepository
 from repositories.reports import ReportsRepository
 from repositories.user_repositories import UserRepositoriesRepository
@@ -26,6 +26,27 @@ from utils.serializers import serialize_github_item
 router = APIRouter()
 
 
+class PRsSectionResponse(BaseModel):
+    """Response for PRs section."""
+
+    prs: list[GitHubItem]
+    cached: bool
+
+
+class IssuesSectionResponse(BaseModel):
+    """Response for Issues section."""
+
+    issues: list[GitHubItem]
+    cached: bool
+
+
+class PeopleSectionResponse(BaseModel):
+    """Response for People section."""
+
+    people: list[ContributorActivity]
+    cached: bool
+
+
 @router.get("/reports/{owner}/{repo}/prs")
 async def get_prs_section(
     owner: str,
@@ -34,7 +55,7 @@ async def get_prs_section(
     force: bool = Query(False, description="Force fresh data, bypass cache"),
     auth: AuthenticatedRequest = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> Dict[str, Any]:
+) -> PRsSectionResponse:
     """
     Get PRs section with database caching.
 
@@ -94,10 +115,10 @@ async def get_prs_section(
             prs_items = [
                 GitHubItem(**pr) if isinstance(pr, dict) else pr for pr in cached_prs
             ]
-            return {
-                "prs": prs_items,
-                "cached": True,
-            }
+            return PRsSectionResponse(
+                prs=prs_items,
+                cached=True,
+            )
 
         if force:
             print(f"🔄 Force refresh for {full_name} PRs ({timeframe})")
@@ -124,10 +145,10 @@ async def get_prs_section(
         # Commit immediately to ensure data is available for TL;DR endpoint
         await db.commit()
 
-        return {
-            "prs": summarized_prs,
-            "cached": False,
-        }
+        return PRsSectionResponse(
+            prs=summarized_prs,
+            cached=False,
+        )
 
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to fetch PRs: {str(e)}")
@@ -141,7 +162,7 @@ async def get_issues_section(
     force: bool = Query(False, description="Force fresh data, bypass cache"),
     auth: AuthenticatedRequest = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> Dict[str, Any]:
+) -> IssuesSectionResponse:
     """
     Get Issues section with database caching.
 
@@ -202,10 +223,10 @@ async def get_issues_section(
                 GitHubItem(**issue) if isinstance(issue, dict) else issue
                 for issue in cached_issues
             ]
-            return {
-                "issues": issues_items,
-                "cached": True,
-            }
+            return IssuesSectionResponse(
+                issues=issues_items,
+                cached=True,
+            )
 
         if force:
             print(f"🔄 Force refresh for {full_name} Issues ({timeframe})")
@@ -232,10 +253,10 @@ async def get_issues_section(
         # Commit immediately to ensure data is available for TL;DR endpoint
         await db.commit()
 
-        return {
-            "issues": summarized_issues,
-            "cached": False,
-        }
+        return IssuesSectionResponse(
+            issues=summarized_issues,
+            cached=False,
+        )
 
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to fetch Issues: {str(e)}")
@@ -249,7 +270,7 @@ async def get_people_section(
     force: bool = Query(False, description="Force fresh data, bypass cache"),
     auth: AuthenticatedRequest = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> Dict[str, Any]:
+) -> PeopleSectionResponse:
     """
     Get People (contributors) section with database caching.
 
@@ -305,10 +326,10 @@ async def get_people_section(
 
         if cached_people:
             print(f"✓ Cache HIT for {full_name} People ({timeframe})")
-            return {
-                "people": cached_people,
-                "cached": True,
-            }
+            return PeopleSectionResponse(
+                people=cached_people,
+                cached=True,
+            )
 
         if force:
             print(f"🔄 Force refresh for {full_name} People ({timeframe})")
@@ -367,10 +388,10 @@ async def get_people_section(
         # Commit immediately to ensure data is available
         await db.commit()
 
-        return {
-            "people": people_summaries,
-            "cached": False,
-        }
+        return PeopleSectionResponse(
+            people=people_summaries,
+            cached=False,
+        )
 
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to fetch People: {str(e)}")
