@@ -8,11 +8,7 @@ from api import (
     auth,
     deepdive,
     diff,
-    issues,
-    people,
-    prs,
     repos,
-    tldr,
     reports,
     user_repos,
 )
@@ -52,10 +48,6 @@ def health_check() -> dict[str, str]:
 
 # Include routers
 app.include_router(auth.router, prefix="/api/v1", tags=["auth"])
-app.include_router(tldr.router, prefix="/api/v1", tags=["tldr"])
-app.include_router(issues.router, prefix="/api/v1", tags=["issues"])
-app.include_router(prs.router, prefix="/api/v1", tags=["prs"])
-app.include_router(people.router, prefix="/api/v1", tags=["people"])
 app.include_router(diff.router, prefix="/api/v1", tags=["diff"])
 app.include_router(deepdive.router, prefix="/api/v1", tags=["deepdive"])
 app.include_router(repos.router, prefix="/api/v1", tags=["repos"])

@@ -1,5 +1,5 @@
 """User repository with CRUD operations."""
-from typing import Optional
+from typing import Any, Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,7 +19,7 @@ class UsersRepository(BaseRepository[User]):
         result = await self.session.execute(select(User).where(User.login == login))
         return result.scalar_one_or_none()
 
-    async def get_or_create_user(self, github_user: dict) -> User:  # type: ignore
+    async def get_or_create_user(self, github_user: dict[str, Any]) -> User:
         """
         Get or create user from GitHub OAuth data.
 

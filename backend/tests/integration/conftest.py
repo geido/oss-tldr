@@ -2,7 +2,6 @@ import pytest
 from fastapi import FastAPI, Request
 from httpx import ASGITransport, AsyncClient
 
-from api import people, prs
 from middleware.auth import get_current_user
 
 
@@ -14,9 +13,6 @@ def test_app() -> FastAPI:
     @app.get("/health")
     async def health():
         return {"status": "ok"}
-
-    app.include_router(prs.router, prefix="/api/v1", tags=["prs"])
-    app.include_router(people.router, prefix="/api/v1", tags=["people"])
 
     class FakeAuth:
         def __init__(self) -> None:

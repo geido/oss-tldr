@@ -1,5 +1,5 @@
 """Repository repository with CRUD operations."""
-from typing import Optional
+from typing import Any, Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,7 +21,7 @@ class RepositoriesRepository(BaseRepository[Repository]):
         )
         return result.scalar_one_or_none()
 
-    async def get_or_create_repository(self, repo_data: dict) -> Repository:  # type: ignore
+    async def get_or_create_repository(self, repo_data: dict[str, Any]) -> Repository:
         """
         Get or create repository from GitHub data.
 
@@ -84,7 +84,7 @@ class RepositoriesRepository(BaseRepository[Repository]):
         return new_repo
 
     async def update_repository_metadata(
-        self, repo_id: int, metadata: dict  # type: ignore
+        self, repo_id: int, metadata: dict[str, Any]
     ) -> Optional[Repository]:
         """Update repository cached metadata."""
         repo = await self.get_by_id(repo_id)

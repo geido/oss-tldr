@@ -1,19 +1,11 @@
 """Reports repository with section-level caching support."""
 from typing import Optional, Literal, Any
 from datetime import datetime, timedelta, timezone
-from sqlalchemy import select, and_, or_
+from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import Report
 from repositories.base import BaseRepository
-
-# Cache expiration policy (from CLAUDE.md)
-CACHE_EXPIRATION = {
-    "last_day": timedelta(hours=1),
-    "last_week": timedelta(hours=6),
-    "last_month": timedelta(days=1),
-    "last_year": timedelta(days=7),
-}
 
 SectionType = Literal["prs", "issues", "people", "tldr"]
 
@@ -174,91 +166,6 @@ class ReportsRepository(BaseRepository[Report]):
         await self.session.refresh(report)
         return report
 
-    async def get_cached_report(
-        self,
-        repository_id: int,
-        timeframe: str,
-        timeframe_start: datetime,
-        timeframe_end: datetime,
-    ) -> Optional[Report]:
-        """
-        Find cached report if exists and not expired.
-
-        Instead of requiring exact timeframe matches, we find the most recent
-        non-expired report for the given repository and timeframe type.
-        This allows cache hits even when resolve_timeframe returns slightly
-        different datetimes due to being called at different times.
-
-        Args:
-            repository_id: Repository ID
-            timeframe: "last_day", "last_week", "last_month", or "last_year"
-            timeframe_start: Start of timeframe (not used for matching)
-            timeframe_end: End of timeframe (not used for matching)
-
-        Returns:
-            Most recent non-expired Report if found, None otherwise
-        """
-        query = (
-            select(Report)
-            .where(
-                and_(
-                    Report.repository_id == repository_id,
-                    Report.timeframe == timeframe,
-                    or_(
-                        Report.expires_at.is_(None),
-                        Report.expires_at > datetime.now(timezone.utc),
-                    ),
-                )
-            )
-            .order_by(Report.generated_at.desc())
-            .limit(1)
-        )
-        result = await self.session.execute(query)
-        return result.scalar_one_or_none()
-
-    async def create_report(
-        self,
-        repository_id: int,
-        timeframe: str,
-        timeframe_start: datetime,
-        timeframe_end: datetime,
-        data: dict,  # type: ignore
-        set_expiration: bool = True,
-    ) -> Report:
-        """
-        Create new report.
-
-        Args:
-            repository_id: Repository ID
-            timeframe: "last_day", "last_week", "last_month", or "last_year"
-            timeframe_start: Start of timeframe
-            timeframe_end: End of timeframe
-            data: Report data with keys: tldr, prs, issues, people
-            set_expiration: Whether to set expiration based on timeframe
-
-        Returns:
-            Created Report
-        """
-        expires_at = None
-        if set_expiration and timeframe in CACHE_EXPIRATION:
-            expires_at = datetime.now(timezone.utc) + CACHE_EXPIRATION[timeframe]
-
-        report = Report(
-            repository_id=repository_id,
-            timeframe=timeframe,
-            timeframe_start=timeframe_start,
-            timeframe_end=timeframe_end,
-            tldr_text=data.get("tldr"),
-            prs=data.get("prs"),
-            issues=data.get("issues"),
-            people=data.get("people"),
-            expires_at=expires_at,
-        )
-        self.session.add(report)
-        await self.session.flush()
-        await self.session.refresh(report)
-        return report
-
     async def get_reports_by_repository(
         self, repository_id: int, limit: int = 10
     ) -> list[Report]:
@@ -266,26 +173,9 @@ class ReportsRepository(BaseRepository[Report]):
         result = await self.session.execute(
             select(Report)
             .where(Report.repository_id == repository_id)
-            .order_by(Report.generated_at.desc())
+            .order_by(
+                Report.created_at.desc()
+            )  # Use created_at instead of generated_at
             .limit(limit)
         )
         return list(result.scalars().all())
-
-    async def delete_expired_reports(self) -> int:
-        """Delete all expired reports. Returns count of deleted reports."""
-        result = await self.session.execute(
-            select(Report).where(
-                and_(
-                    Report.expires_at.is_not(None),
-                    Report.expires_at < datetime.now(timezone.utc),
-                )
-            )
-        )
-        reports = result.scalars().all()
-        count = len(reports)
-
-        for report in reports:
-            await self.session.delete(report)
-
-        await self.session.flush()
-        return count
