@@ -1,3 +1,5 @@
+import type { GitHubItem, PeopleData } from "../types/github";
+
 interface ApiRequestInit extends RequestInit {
   skipAuth?: boolean;
 }
@@ -49,9 +51,9 @@ class ApiClient {
     });
 
     if (response.status === 401) {
+      // Clear auth tokens but don't reload - let AuthContext/AuthGuard handle it
       localStorage.removeItem("oss_tldr_auth_token");
       localStorage.removeItem("oss_tldr_user");
-      window.location.reload();
       throw new Error("Authentication required");
     }
 
@@ -78,9 +80,9 @@ class ApiClient {
     });
 
     if (response.status === 401) {
+      // Clear auth tokens but don't reload - let AuthContext/AuthGuard handle it
       localStorage.removeItem("oss_tldr_auth_token");
       localStorage.removeItem("oss_tldr_user");
-      window.location.reload();
       throw new Error("Authentication required");
     }
 
@@ -120,6 +122,63 @@ class ApiClient {
       method: "POST",
       body: data ? JSON.stringify(data) : undefined,
     });
+  }
+
+  async delete<T>(
+    endpoint: string,
+    data?: Record<string, unknown>,
+    options: ApiRequestInit = {},
+  ): Promise<T> {
+    return this.request<T>(endpoint, {
+      ...options,
+      method: "DELETE",
+      body: data ? JSON.stringify(data) : undefined,
+    });
+  }
+
+  // Database-backed API methods
+
+  /**
+   * Get a specific report section (prs, issues, people, or tldr) with database caching.
+   * This supports progressive loading - each section loads independently.
+   */
+  async getReportSection(
+    owner: string,
+    repo: string,
+    section: "prs" | "issues" | "people" | "tldr",
+    timeframe: "last_day" | "last_week" | "last_month" | "last_year",
+    force: boolean = false,
+    options?: ApiRequestInit,
+  ): Promise<{
+    prs?: GitHubItem[];
+    issues?: GitHubItem[];
+    people?: PeopleData[];
+    tldr?: string;
+    cached: boolean;
+  }> {
+    const forceParam = force ? "&force=true" : "";
+    return this.get(`/reports/${owner}/${repo}/${section}?timeframe=${timeframe}${forceParam}`, options);
+  }
+
+  /**
+   * Get all repositories tracked by the current user
+   */
+  async getUserRepositories() {
+    return this.get("/users/me/repositories");
+  }
+
+  /**
+   * Track a repository for the current user
+   */
+  async trackRepository(repo_url: string) {
+    return this.post("/users/me/repositories", { repo_url });
+  }
+
+  /**
+   * Untrack a repository for the current user
+   */
+  async untrackRepository(repo_url: string) {
+    return this.delete("/users/me/repositories", { repo_url });
   }
 }
 

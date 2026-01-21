@@ -277,7 +277,14 @@ async def search_github_items(
             seen_ids.add(item.id)
             unique_items.append(item)
 
-    return unique_items
+    filtered_items: list[Union[Issue, PullRequest]] = []
+    for item in unique_items:
+        user_login = item.user.login if item and item.user else None
+        if user_login and is_bot(user_login):
+            continue
+        filtered_items.append(item)
+
+    return filtered_items
 
 
 def get_active_contributors(
@@ -300,6 +307,8 @@ def get_active_contributors(
     for commit in commits:
         author = commit.author
         if author and author.login:
+            if is_bot(author.login):
+                continue
             commit_counts[author.login] += 1
 
     top_usernames = sorted(commit_counts.items(), key=lambda x: x[1], reverse=True)[

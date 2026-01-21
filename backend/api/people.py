@@ -1,17 +1,14 @@
 import asyncio
-from typing import Literal, cast
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 
-from config import MAX_ITEMS_PER_SECTION
 from middleware.auth import AuthenticatedRequest, get_current_user
-from models.github import ContributorActivity
-from services.github_client import get_active_contributors, get_repo, get_repo_activity
-from services.issue_summary import summarize_items
-from services.tldr_generator import tldr
+from models.github import ContributorActivity, GitHubItem
+from services.github_client import get_active_contributors, get_repo
+from services.people_summary import enrich_contributor_with_github_activity
 from utils.dates import resolve_timeframe
-from utils.serializers import serialize_github_item
 from utils.url import parse_repo_url
 
 router = APIRouter()
@@ -42,37 +39,28 @@ async def get_people(
         async def enrich_contributor(
             contributor: dict[str, str]
         ) -> ContributorActivity:
-            items = await get_repo_activity(
+            """Fetch and enrich a single contributor's activity."""
+            enriched = await enrich_contributor_with_github_activity(
                 auth.github,
                 github_repo,
-                item_type="all",
-                start_date=start_date,
-                end_date=end_date,
-                author=contributor["username"],
+                contributor,
+                start_date,
+                end_date,
             )
 
-            github_items = [serialize_github_item(item) for item in items]
-            summarized = await summarize_items(github_items[:MAX_ITEMS_PER_SECTION])
-
-            summary = await tldr(
-                "\n".join(item.summary for item in summarized if item.summary),
-                stream=False,
-            )
-
+            # Convert dict to ContributorActivity model
             return ContributorActivity(
-                username=contributor["username"],
-                avatar_url=contributor["avatar_url"],
-                profile_url=contributor["profile_url"],
-                tldr=cast(str, summary),
+                username=enriched["username"],
+                avatar_url=enriched["avatar_url"],
+                profile_url=enriched["profile_url"],
+                tldr=enriched["tldr"],
                 prs=[
-                    item
-                    for item in summarized
-                    if getattr(item, "is_pull_request", False)
+                    GitHubItem(**pr) if isinstance(pr, dict) else pr
+                    for pr in enriched["prs"]
                 ],
                 issues=[
-                    item
-                    for item in summarized
-                    if not getattr(item, "is_pull_request", False)
+                    GitHubItem(**issue) if isinstance(issue, dict) else issue
+                    for issue in enriched["issues"]
                 ],
             )
 

@@ -11,6 +11,11 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - PYTHONPATH=/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - ./backend/.env
 
   frontend:
     platform: linux/amd64  # For mac M1/arm64 compatibility
@@ -25,5 +30,23 @@ services:
     environment:
       - ROLLUP_USE_NATIVE=false
 
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: oss_tldr
+      POSTGRES_PASSWORD: dev_password
+      POSTGRES_DB: oss_tldr
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/database/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U oss_tldr"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
 volumes:
   frontend_node_modules:
+  postgres_data:

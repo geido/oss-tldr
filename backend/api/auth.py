@@ -5,8 +5,9 @@ from urllib.parse import urlencode
 
 import httpx
 import jwt
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import (
     FRONTEND_URL,
@@ -16,6 +17,8 @@ from config import (
     JWT_EXPIRE_HOURS,
     JWT_SECRET,
 )
+from database.connection import get_db
+from repositories.users import UsersRepository
 
 router = APIRouter()
 
@@ -77,8 +80,10 @@ async def github_login() -> AuthUrlResponse:
 
 
 @router.post("/auth/github/callback")
-async def github_callback(payload: CallbackRequest) -> CallbackResponse:
-    """Exchange GitHub OAuth code for access token"""
+async def github_callback(
+    payload: CallbackRequest, db: AsyncSession = Depends(get_db)
+) -> CallbackResponse:
+    """Exchange GitHub OAuth code for access token and upsert user to database"""
     if not GITHUB_CLIENT_ID or not GITHUB_CLIENT_SECRET:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -132,6 +137,18 @@ async def github_callback(payload: CallbackRequest) -> CallbackResponse:
             )
 
         user_data = user_response.json()
+
+        # Upsert user to database
+        users_repo = UsersRepository(db)
+        await users_repo.get_or_create_user(
+            {
+                "id": user_data["id"],
+                "login": user_data["login"],
+                "name": user_data.get("name"),
+                "avatar_url": user_data.get("avatar_url"),
+                "email": user_data.get("email"),
+            }
+        )
 
         # Create JWT token
         expires_at = datetime.utcnow() + timedelta(hours=JWT_EXPIRE_HOURS)
