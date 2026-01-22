@@ -9,7 +9,9 @@ from config import JWT_ALGORITHM, JWT_SECRET
 class AuthenticatedRequest:
     """Enhanced request object with authentication data"""
 
-    def __init__(self, request: Request, github_token: str, user: dict[str, str | int | None]):
+    def __init__(
+        self, request: Request, github_token: str, user: dict[str, str | int | None]
+    ):
         """
         Initialize authenticated request.
         """

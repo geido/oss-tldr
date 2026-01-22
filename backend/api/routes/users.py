@@ -1,10 +1,16 @@
-"""User repository tracking API endpoints."""
-from typing import List
+"""User repository tracking routes."""
 
-from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.schemas import (
+    RepositorySummary,
+    TrackRepoRequest,
+    TrackRepoResponse,
+    UntrackRepoRequest,
+    UntrackRepoResponse,
+    UserTrackedReposResponse,
+)
 from database.connection import get_db
 from middleware.auth import AuthenticatedRequest, get_current_user
 from repositories.repositories import RepositoriesRepository
@@ -15,69 +21,17 @@ from utils.url import parse_repo_url
 router = APIRouter()
 
 
-class TrackRepoRequest(BaseModel):
-    """Request to track a repository."""
-
-    repo_url: str
-
-
-class RepositorySummary(BaseModel):
-    """Summary of repository data."""
-
-    id: int
-    full_name: str
-    owner: str
-    name: str
-    description: str | None
-    html_url: str
-    is_private: bool
-    language: str | None
-    stargazers_count: int
-
-
-class TrackRepoResponse(BaseModel):
-    """Response after tracking a repository."""
-
-    success: bool
-    message: str
-    repository: RepositorySummary
-
-
-class UntrackRepoRequest(BaseModel):
-    """Request to untrack a repository."""
-
-    repo_url: str
-
-
-class UntrackRepoResponse(BaseModel):
-    """Response after untracking a repository."""
-
-    success: bool
-    message: str
-
-
-class UserReposResponse(BaseModel):
-    """Response with user's tracked repositories."""
-
-    repositories: List[RepositorySummary]
-
-
-@router.get("/users/me/repositories")
+@router.get("/users/me/repositories", response_model=UserTrackedReposResponse)
 async def get_user_repositories(
     auth: AuthenticatedRequest = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> UserReposResponse:
-    """
-    Get all repositories tracked by the current user.
-
-    Returns:
-        UserReposResponse: List of tracked repositories
-    """
+) -> UserTrackedReposResponse:
+    """Get all repositories tracked by the current user."""
     try:
         user_repos_repo = UserRepositoriesRepository(db)
         repositories = await user_repos_repo.get_user_repositories(auth.user["id"])
 
-        return UserReposResponse(
+        return UserTrackedReposResponse(
             repositories=[
                 RepositorySummary(
                     id=repo.id,
@@ -100,34 +54,22 @@ async def get_user_repositories(
         )
 
 
-@router.post("/users/me/repositories")
+@router.post("/users/me/repositories", response_model=TrackRepoResponse)
 async def track_repository(
     payload: TrackRepoRequest,
     auth: AuthenticatedRequest = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> TrackRepoResponse:
-    """
-    Track a repository for the current user.
-
-    Args:
-        payload: Repository URL to track
-
-    Returns:
-        TrackRepoResponse: Success status and repository info
-    """
+    """Track a repository for the current user."""
     try:
-        # Parse repository URL
         owner, repo_name = parse_repo_url(payload.repo_url)
         full_name = f"{owner}/{repo_name}"
 
-        # Get repository from GitHub to validate it exists
         github_repo = get_repo(auth.github, owner, repo_name)
 
-        # Initialize repositories
         repos_repo = RepositoriesRepository(db)
         user_repos_repo = UserRepositoriesRepository(db)
 
-        # Get or create repository record
         repo_record = await repos_repo.get_or_create_repository(
             {
                 "full_name": full_name,
@@ -144,7 +86,6 @@ async def track_repository(
             }
         )
 
-        # Track repository for user
         await user_repos_repo.track_repository(auth.user["id"], repo_record.id)
 
         return TrackRepoResponse(
@@ -169,31 +110,20 @@ async def track_repository(
         )
 
 
-@router.delete("/users/me/repositories")
+@router.delete("/users/me/repositories", response_model=UntrackRepoResponse)
 async def untrack_repository(
     payload: UntrackRepoRequest,
     auth: AuthenticatedRequest = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> UntrackRepoResponse:
-    """
-    Untrack a repository for the current user.
-
-    Args:
-        payload: Repository URL to untrack
-
-    Returns:
-        UntrackRepoResponse: Success status
-    """
+    """Untrack a repository for the current user."""
     try:
-        # Parse repository URL
         owner, repo_name = parse_repo_url(payload.repo_url)
         full_name = f"{owner}/{repo_name}"
 
-        # Initialize repositories
         repos_repo = RepositoriesRepository(db)
         user_repos_repo = UserRepositoriesRepository(db)
 
-        # Get repository record
         repo_record = await repos_repo.get_by_full_name(full_name)
 
         if not repo_record:
@@ -201,7 +131,6 @@ async def untrack_repository(
                 status_code=404, detail=f"Repository {full_name} not found"
             )
 
-        # Untrack repository for user
         success = await user_repos_repo.untrack_repository(
             auth.user["id"], repo_record.id
         )

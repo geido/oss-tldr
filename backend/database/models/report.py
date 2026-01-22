@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
@@ -10,6 +10,10 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from database.connection import Base
+
+if TYPE_CHECKING:
+    from database.models.repository import Repository
+    from database.models.user_report_access import UserReportAccess
 
 
 class Report(Base):
@@ -35,30 +39,46 @@ class Report(Base):
         Integer, ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False
     )
     timeframe: Mapped[str] = mapped_column(String(20), nullable=False)
-    timeframe_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    timeframe_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    timeframe_start: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    timeframe_end: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
 
     # Section data (no expiration - data is permanent for the given timeframe)
     prs: Mapped[Any | None] = mapped_column(JSONB)
     prs_generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     issues: Mapped[Any | None] = mapped_column(JSONB)
-    issues_generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    issues_generated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
 
     people: Mapped[Any | None] = mapped_column(JSONB)
-    people_generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    people_generated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
 
     # TL;DR summary (cached with 1-hour expiration like other sections)
     tldr_text: Mapped[str | None] = mapped_column(Text)
     tldr_generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     # Overall record metadata
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), onupdate=func.now())
-    version: Mapped[int] = mapped_column(Integer, default=2)  # Version 2 = section-level caching
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), onupdate=func.now()
+    )
+    version: Mapped[int] = mapped_column(
+        Integer, default=2
+    )  # Version 2 = section-level caching
 
     # Relationships
-    repository: Mapped["Repository"] = relationship("Repository", back_populates="reports")
+    repository: Mapped["Repository"] = relationship(
+        "Repository", back_populates="reports"
+    )
     accessed_by: Mapped[list["UserReportAccess"]] = relationship(
         "UserReportAccess", back_populates="report", cascade="all, delete-orphan"
     )

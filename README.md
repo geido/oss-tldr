@@ -1,17 +1,19 @@
 # 🧠 OSS TL;DR
 
-**OSS TL;DR** is a multi-user FastAPI + React application that provides AI-powered summaries of GitHub repositories with secure OAuth authentication. Track multiple repositories, get intelligent summaries of issues, PRs, contributors, and code diffs using OpenAI.
+**OSS TL;DR** is a multi-user FastAPI + React application that provides AI-powered summaries of GitHub repositories with secure OAuth authentication. Track multiple repositories, create custom groups, and get intelligent summaries of issues, PRs, contributors, and code diffs using OpenAI.
 
 ## ✨ Features
 
 - 🔒 **GitHub OAuth Authentication** - Secure login with your GitHub account
 - 🏠 **Multi-Repository Dashboard** - Track and manage multiple repositories
+- 📦 **Repository Groups** - Create custom groups for aggregated reports
 - 🔍 **Smart Repository Discovery** - Autocomplete with your accessible repos and public search
 - 📊 **AI-Powered Summaries** - TL;DRs of key pull requests, issues, and contributors
 - 🔬 **Deep Dive Analysis** - Detailed PR diffs and discussion analysis
 - 👥 **Contributor Insights** - Highlights of the most active contributors
 - 📈 **Activity Filtering** - Real signal, not noise from bots and automated PRs
-- 💾 **User-Specific Storage** - Your data stays private and persists across sessions
+- 💾 **Database Persistence** - All data stored in PostgreSQL, accessible from any device
+- ⚡ **Smart Caching** - Reports cached and shared across users for instant loading
 - 📱 **Mobile Responsive** - Works seamlessly on desktop and mobile devices
 
 ---
@@ -79,13 +81,18 @@ Then open http://localhost:5173 in your browser and sign in with GitHub.
 - **GitHub OAuth 2.0** for secure authentication
 - **JWT tokens** with automatic validation and refresh
 - **User-specific data isolation** - each user sees only their repositories and reports
-- **Automatic cleanup** when switching between GitHub accounts
+
+### Database Persistence
+- **PostgreSQL** for all user data, repositories, reports, and groups
+- **Smart caching** - reports shared across users for the same timeframe
+- **Permanent cache** - once generated, reports for a specific date range never expire
+- **No localStorage dependency** - access your data from any device
 
 ### Smart Repository Management
 - **Autocomplete discovery** showing your accessible repositories first
 - **Public repository search** for exploring new projects
-- **Access validation** with clear error messages for restricted repositories
-- **Exclude filters** to avoid showing already-added repositories
+- **Repository groups** - create custom collections for aggregated reports
+- **System groups** - predefined curated collections (e.g., "AI Landscape")
 
 ### AI-Powered Analysis
 - **Progressive loading** of PRs, issues, and contributors
@@ -99,6 +106,7 @@ Then open http://localhost:5173 in your browser and sign in with GitHub.
 
 ### Backend
 - **Python 3.11** with FastAPI
+- **PostgreSQL** with SQLAlchemy ORM (async)
 - **PyGithub** for GitHub API integration
 - **OpenAI API** for content generation
 - **JWT** for secure authentication
@@ -112,7 +120,7 @@ Then open http://localhost:5173 in your browser and sign in with GitHub.
 - **Mobile-responsive** design with styled-components
 
 ### Infrastructure
-- **Docker & Docker Compose** for development
+- **Docker & Docker Compose** for development (includes PostgreSQL)
 - **Pre-commit hooks** for code quality
 - **CORS configuration** for secure cross-origin requests
 
@@ -167,6 +175,7 @@ Configured to run: `black`, `mypy`, `ruff`, `eslint`, `tsc`
 
 | Variable | Description | Example |
 |----------|-------------|---------|
+| `DATABASE_URL` | PostgreSQL connection string | `postgresql+asyncpg://user:pass@host:5432/db` |
 | `GITHUB_CLIENT_ID` | OAuth App Client ID | `Iv1.a1b2c3d4e5f6g7h8` |
 | `GITHUB_CLIENT_SECRET` | OAuth App Client Secret | `abc123def456...` |
 | `OPENAI_API_KEY` | OpenAI API Key | `sk-proj-abc123...` |
@@ -180,6 +189,8 @@ Configured to run: `black`, `mypy`, `ruff`, `eslint`, `tsc`
 | `MAX_ITEMS_PER_SECTION` | `10` | Max items per section |
 | `FRONTEND_URL` | `http://localhost:5173` | Frontend URL for CORS |
 | `JWT_EXPIRE_HOURS` | `24` | JWT token expiration |
+| `DB_POOL_SIZE` | `20` | Database connection pool size |
+| `DB_MAX_OVERFLOW` | `10` | Max overflow connections |
 
 ---
 

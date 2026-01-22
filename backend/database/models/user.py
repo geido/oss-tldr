@@ -2,13 +2,18 @@
 from __future__ import annotations
 
 from datetime import datetime
-
+from typing import TYPE_CHECKING
 
 from sqlalchemy import BigInteger, DateTime, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from database.connection import Base
+
+if TYPE_CHECKING:
+    from database.models.group import Group
+    from database.models.user_report_access import UserReportAccess
+    from database.models.user_repository import UserRepository
 
 
 class User(Base):
@@ -34,4 +39,10 @@ class User(Base):
     )
     accessed_reports: Mapped[list["UserReportAccess"]] = relationship(
         "UserReportAccess", back_populates="user", cascade="all, delete-orphan"
+    )
+    created_groups: Mapped[list["Group"]] = relationship(
+        "Group",
+        back_populates="created_by",
+        cascade="all, delete-orphan",
+        foreign_keys="Group.created_by_id",
     )

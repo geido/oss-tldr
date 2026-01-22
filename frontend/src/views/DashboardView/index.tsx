@@ -36,10 +36,8 @@ import {
 import { apiClient } from "../../utils/apiClient";
 import { useAuth } from "../../hooks/useAuth";
 import { RepoAutocomplete } from "../../components";
-import { UserStorage } from "../../utils/userStorage";
-import { GroupListResponse } from "../../types/api";
+import { GroupListResponse, GroupResponse } from "../../types/api";
 import { normalizeRepoIdentifier } from "../../utils/repoUtils";
-import { slugify } from "../../utils/slugify";
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -58,13 +56,6 @@ type SavedRepo = {
 
 type DashboardProps = {
   onStartDigest: (target: DigestTarget, timeframe: Timeframe) => void;
-};
-
-type SavedGroup = {
-  id: string;
-  name: string;
-  repos: string[];
-  description?: string | null;
 };
 
 const StyledCard = styled(Card)`
@@ -179,8 +170,6 @@ const StatItem = styled.div`
   }
 `;
 
-const BASE_GROUP_STORAGE_KEY = "oss-tldr-groups";
-
 const GroupCard = styled(Card)`
   height: 220px;
   display: flex;
@@ -215,15 +204,16 @@ const DashboardView: React.FC<DashboardProps> = ({ onStartDigest }) => {
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [validating, setValidating] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [availableGroups, setAvailableGroups] = useState<GroupDefinition[]>([]);
+  const [systemGroups, setSystemGroups] = useState<GroupDefinition[]>([]);
+  const [userGroups, setUserGroups] = useState<GroupDefinition[]>([]);
   const [groupsLoading, setGroupsLoading] = useState(true);
-  const [customGroups, setCustomGroups] = useState<SavedGroup[]>([]);
   const [groupModalVisible, setGroupModalVisible] = useState(false);
   const [groupValidating, setGroupValidating] = useState(false);
   const [form] = Form.useForm();
   const [groupForm] = Form.useForm();
   const { token } = theme.useToken();
   const loadReposRequestedRef = useRef(false);
+  const loadGroupsRequestedRef = useRef(false);
 
   const repoOptions = useMemo(
     () =>
@@ -279,38 +269,48 @@ const DashboardView: React.FC<DashboardProps> = ({ onStartDigest }) => {
     }
   }, []);
 
-  const loadGroupsFromStorage = useCallback(() => {
+  const loadGroupsFromDatabase = useCallback(async () => {
+    if (loadGroupsRequestedRef.current) {
+      console.log("Groups already loading, skipping duplicate request");
+      return;
+    }
+
+    loadGroupsRequestedRef.current = true;
     try {
-      const storageKey = UserStorage.getUserKey(BASE_GROUP_STORAGE_KEY, user);
-      const saved = localStorage.getItem(storageKey);
-      if (saved) {
-        setCustomGroups(JSON.parse(saved));
-      } else {
-        setCustomGroups([]);
+      setGroupsLoading(true);
+      const response = await apiClient.get<GroupListResponse>("groups");
+      setSystemGroups(
+        response.system_groups.map((g) => ({
+          id: g.id,
+          name: g.name,
+          description: g.description,
+          repos: g.repos,
+          is_system: true,
+        })),
+      );
+      setUserGroups(
+        response.user_groups.map((g) => ({
+          id: g.id,
+          name: g.name,
+          description: g.description,
+          repos: g.repos,
+          is_system: false,
+        })),
+      );
+    } catch (error) {
+      console.error("Failed to load groups from database:", error);
+      if (error instanceof Error && error.message !== "Authentication required") {
+        message.error("Failed to load groups");
       }
-    } catch (error) {
-      console.error("Failed to load groups from storage:", error);
-      setCustomGroups([]);
+      setSystemGroups([]);
+      setUserGroups([]);
+    } finally {
+      setGroupsLoading(false);
+      loadGroupsRequestedRef.current = false;
     }
-  }, [user]);
+  }, []);
 
-  const saveGroupsToStorage = (groups: SavedGroup[]) => {
-    try {
-      const storageKey = UserStorage.getUserKey(BASE_GROUP_STORAGE_KEY, user);
-      localStorage.setItem(storageKey, JSON.stringify(groups));
-      setCustomGroups(groups);
-    } catch (error) {
-      console.error("Failed to save groups to storage:", error);
-      message.error("Failed to save group");
-    }
-  };
-
-  const [selectedRepoData, setSelectedRepoData] = useState<RepoSummary | null>(
-    null,
-  );
-
-  const handleRepoSelect = (repoUrl: string, repoData?: RepoSummary) => {
-    setSelectedRepoData(repoData || null);
+  const handleRepoSelect = (repoUrl: string, _repoData?: RepoSummary) => {
     form.setFieldsValue({ repo_url: repoUrl });
   };
 
@@ -337,7 +337,6 @@ const DashboardView: React.FC<DashboardProps> = ({ onStartDigest }) => {
 
       setIsModalVisible(false);
       form.resetFields();
-      setSelectedRepoData(null);
       message.success(`Successfully added ${trackedRepo.full_name}`);
     } catch (error) {
       const errorMessage =
@@ -400,25 +399,19 @@ const DashboardView: React.FC<DashboardProps> = ({ onStartDigest }) => {
         throw new Error("Group name is required");
       }
 
-      const baseId = slugify(trimmedName);
-      let candidateId = baseId;
-      let suffix = 1;
-      while (customGroups.some((group) => group.id === candidateId)) {
-        candidateId = `${baseId}-${suffix}`;
-        suffix += 1;
-      }
+      // Create group via API
+      const response = await apiClient.createGroup(
+        trimmedName,
+        normalizedRepos,
+        values.description?.trim() || null,
+      ) as GroupResponse;
 
-      const newGroup: SavedGroup = {
-        id: candidateId,
-        name: trimmedName,
-        repos: normalizedRepos,
-        description: values.description?.trim() || undefined,
-      };
+      // Reload groups from database
+      await loadGroupsFromDatabase();
 
-      saveGroupsToStorage([...customGroups, newGroup]);
       setGroupModalVisible(false);
       groupForm.resetFields();
-      message.success(`Created group "${newGroup.name}"`);
+      message.success(`Created group "${response.group.name}"`);
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "Failed to create group";
@@ -451,55 +444,40 @@ const DashboardView: React.FC<DashboardProps> = ({ onStartDigest }) => {
     );
   };
 
-  const handleGroupStart = (
-    group: SavedGroup | GroupDefinition,
-    preset: boolean = false,
-  ) => {
+  const handleGroupStart = (group: GroupDefinition) => {
     onStartDigest(
       {
         kind: "group",
         id: group.id,
         name: group.name,
         repos: group.repos,
-        preset,
+        is_system: group.is_system,
       },
       "last_week",
     );
   };
 
-  const handleRemoveGroup = (groupId: string) => {
-    const updated = customGroups.filter((group) => group.id !== groupId);
-    saveGroupsToStorage(updated);
-    message.success("Group removed");
+  const handleRemoveGroup = async (groupId: string) => {
+    try {
+      await apiClient.deleteGroup(groupId);
+      await loadGroupsFromDatabase();
+      message.success("Group removed");
+    } catch (error) {
+      console.error("Failed to remove group:", error);
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to remove group";
+      message.error(errorMessage);
+    }
   };
 
   useEffect(() => {
-    // Only load repos if user is authenticated
+    // Only load data if user is authenticated
     if (user) {
       loadReposFromDatabase();
+      loadGroupsFromDatabase();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]); // Only reload when user ID changes, not the whole user object
-
-  useEffect(() => {
-    loadGroupsFromStorage();
-  }, [loadGroupsFromStorage]);
-
-  useEffect(() => {
-    const fetchGroups = async () => {
-      try {
-        setGroupsLoading(true);
-        const response = await apiClient.get<GroupListResponse>("groups");
-        setAvailableGroups(response.groups);
-      } catch (error) {
-        console.error("Failed to load predefined groups:", error);
-      } finally {
-        setGroupsLoading(false);
-      }
-    };
-
-    fetchGroups();
-  }, []);
 
   return (
     <div
@@ -753,7 +731,7 @@ const DashboardView: React.FC<DashboardProps> = ({ onStartDigest }) => {
           <div style={{ textAlign: "center", padding: "3rem 0" }}>
             <Spin size="large" />
           </div>
-        ) : customGroups.length === 0 && availableGroups.length === 0 ? (
+        ) : userGroups.length === 0 && systemGroups.length === 0 ? (
           <Card style={{ textAlign: "center" }}>
             <AppstoreOutlined
               style={{
@@ -771,7 +749,7 @@ const DashboardView: React.FC<DashboardProps> = ({ onStartDigest }) => {
           </Card>
         ) : (
           <Row gutter={[24, 24]}>
-            {customGroups.map((group) => (
+            {userGroups.map((group) => (
               <Col xs={24} md={12} lg={8} key={group.id}>
                 <GroupCard>
                   <div>
@@ -805,12 +783,13 @@ const DashboardView: React.FC<DashboardProps> = ({ onStartDigest }) => {
               </Col>
             ))}
 
-            {availableGroups.map((group) => (
-              <Col xs={24} md={12} lg={8} key={`preset-${group.id}`}>
+            {systemGroups.map((group) => (
+              <Col xs={24} md={12} lg={8} key={`system-${group.id}`}>
                 <GroupCard>
                   <div>
                     <GroupHeader>
                       <GroupName>{group.name}</GroupName>
+                      <Tag color="purple" style={{ marginLeft: 8 }}>System</Tag>
                     </GroupHeader>
                     {group.description && (
                       <Text type="secondary">{group.description}</Text>
@@ -822,7 +801,7 @@ const DashboardView: React.FC<DashboardProps> = ({ onStartDigest }) => {
                   </div>
                   <Space style={{ justifyContent: "space-between" }}>
                     <Tag color="geekblue">{group.repos.length} repos</Tag>
-                    <Button onClick={() => handleGroupStart(group, true)}>
+                    <Button onClick={() => handleGroupStart(group)}>
                       View Summary
                     </Button>
                   </Space>
@@ -855,7 +834,6 @@ const DashboardView: React.FC<DashboardProps> = ({ onStartDigest }) => {
         onCancel={() => {
           setIsModalVisible(false);
           form.resetFields();
-          setSelectedRepoData(null);
         }}
         footer={null}
         width={500}

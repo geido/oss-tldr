@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from functools import lru_cache
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -9,6 +8,8 @@ from pydantic import BaseModel, ValidationError
 
 
 class GroupDefinition(BaseModel):
+    """Schema for group definitions loaded from YAML files."""
+
     id: str
     name: str
     description: Optional[str] = None
@@ -18,7 +19,15 @@ class GroupDefinition(BaseModel):
 _GROUPS_PATH = Path(__file__).resolve().parent.parent / "groups"
 
 
-def _load_group_files() -> Dict[str, GroupDefinition]:
+def load_group_definitions_from_yaml() -> Dict[str, GroupDefinition]:
+    """Load group definitions from YAML files in the groups directory.
+
+    This is used primarily for seeding system groups into the database
+    on application startup.
+
+    Returns:
+        Dictionary mapping group IDs to GroupDefinition objects
+    """
     groups: Dict[str, GroupDefinition] = {}
 
     if not _GROUPS_PATH.exists():
@@ -41,14 +50,29 @@ def _load_group_files() -> Dict[str, GroupDefinition]:
     return groups
 
 
-@lru_cache()
-def get_group_definitions() -> Dict[str, GroupDefinition]:
-    return _load_group_files()
+async def seed_system_groups(session) -> None:
+    """Seed system groups from YAML files into the database.
 
+    This function is called on application startup to ensure all
+    predefined groups exist in the database. It will:
+    - Create new system groups that don't exist
+    - Update existing system groups if their definition changed
 
-def get_group_definition(group_id: str) -> Optional[GroupDefinition]:
-    return get_group_definitions().get(group_id)
+    Args:
+        session: Async database session
+    """
+    from repositories.groups import GroupsRepository
 
+    groups_repo = GroupsRepository(session)
+    yaml_groups = load_group_definitions_from_yaml()
 
-def refresh_groups_cache() -> None:
-    get_group_definitions.cache_clear()
+    for group_def in yaml_groups.values():
+        await groups_repo.upsert_system_group(
+            slug=group_def.id,
+            name=group_def.name,
+            repos=group_def.repos,
+            description=group_def.description,
+        )
+        print(f"✓ Seeded system group: {group_def.name} ({group_def.id})")
+
+    await session.commit()

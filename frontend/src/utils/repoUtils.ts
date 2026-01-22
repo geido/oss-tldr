@@ -12,7 +12,7 @@ export const normalizeRepoIdentifier = (input: string): string => {
       if (parts.length >= 2) {
         return `${parts[0]}/${parts[1]}`;
       }
-    } catch (error) {
+    } catch {
       throw new Error(`Invalid repository URL: ${value}`);
     }
   }

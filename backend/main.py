@@ -1,18 +1,10 @@
 from contextlib import asynccontextmanager
+import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-import os
 
-from api import (
-    auth,
-    deepdive,
-    diff,
-    groups,
-    repos,
-    reports,
-    user_repos,
-)
+from api import create_api_router
 from database.connection import init_db, close_db
 
 
@@ -47,11 +39,5 @@ def health_check() -> dict[str, str]:
     return {"status": "ok", "message": "OSS TL;DR is alive!"}
 
 
-# Include routers
-app.include_router(auth.router, prefix="/api/v1", tags=["auth"])
-app.include_router(diff.router, prefix="/api/v1", tags=["diff"])
-app.include_router(deepdive.router, prefix="/api/v1", tags=["deepdive"])
-app.include_router(repos.router, prefix="/api/v1", tags=["repos"])
-app.include_router(groups.router, prefix="/api/v1", tags=["groups"])
-app.include_router(reports.router, prefix="/api/v1", tags=["reports"])
-app.include_router(user_repos.router, prefix="/api/v1", tags=["user_repos"])
+# Include API router with all routes
+app.include_router(create_api_router(), prefix="/api/v1")

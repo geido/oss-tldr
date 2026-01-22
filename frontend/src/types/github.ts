@@ -78,6 +78,7 @@ export type GroupDefinition = {
   name: string;
   description?: string | null;
   repos: string[];
+  is_system?: boolean;
 };
 
 export type GroupRepoReport = {
@@ -106,7 +107,7 @@ export type StoredGroupReport = {
 
 export type DigestTarget =
   | { kind: "repo"; repo: string; label: string }
-  | { kind: "group"; id?: string | null; name: string; repos: string[]; preset?: boolean };
+  | { kind: "group"; id?: string | null; name: string; repos: string[]; is_system?: boolean };
 
 // API Response types for progressive loading endpoints
 export type ReportSectionResponse = {

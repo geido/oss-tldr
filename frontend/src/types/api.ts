@@ -54,8 +54,33 @@ export interface IssuesResponse {
   issues: GitHubItem[];
 }
 
+export interface GroupSummary {
+  id: string;
+  name: string;
+  description?: string | null;
+  repos: string[];
+  is_system: boolean;
+}
+
 export interface GroupListResponse {
-  groups: GroupDefinition[];
+  system_groups: GroupSummary[];
+  user_groups: GroupSummary[];
+}
+
+export interface GroupResponse {
+  group: GroupSummary;
+}
+
+export interface CreateGroupRequest {
+  name: string;
+  repos: string[];
+  description?: string | null;
+}
+
+export interface UpdateGroupRequest {
+  name?: string;
+  repos?: string[];
+  description?: string | null;
 }
 
 export interface GroupReportResponse {
