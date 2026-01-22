@@ -33,7 +33,7 @@ Include only if discussion comments are provided. Highlight the most insightful 
 
 Include only if there are clear resolutions or follow-ups.
 
-Respond using Markdown only using dividers `---` to separate sections. 
+Respond using Markdown only using dividers `---` to separate sections.
 Do not include any additional commentary or explanations outside the structured sections.
 
 """

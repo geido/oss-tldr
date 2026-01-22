@@ -72,3 +72,11 @@ export type RepoSummary = {
   stargazers_count: number;
   updated_at: string;
 };
+
+// API Response types for progressive loading endpoints
+export type ReportSectionResponse = {
+  prs?: GitHubItem[];
+  issues?: GitHubItem[];
+  people?: PeopleData[];
+  cached: boolean;
+};

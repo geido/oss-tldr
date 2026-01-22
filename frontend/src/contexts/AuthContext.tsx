@@ -4,6 +4,8 @@ import React, {
   useState,
   useEffect,
   useCallback,
+  useMemo,
+  useRef,
   ReactNode,
 } from "react";
 import { UserStorage } from "../utils/userStorage";
@@ -42,6 +44,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const hasInitialized = useRef(false);
 
   const isAuthenticated = !!token && !!user;
 
@@ -81,7 +84,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     [logout],
   );
 
-  const login = async () => {
+  const login = useCallback(async () => {
     try {
       const data = await apiClient.get<{ state: string; auth_url: string }>(
         "/auth/github/login",
@@ -97,7 +100,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       console.error("Login error:", error);
       throw error;
     }
-  };
+  }, []);
 
   const setAuthData = (authToken: string, userData: User) => {
     // Handle user switching (clear data if different user)
@@ -113,18 +116,27 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     localStorage.setItem(USER_KEY, JSON.stringify(userData));
   };
 
-  const value: AuthContextType = {
-    user,
-    token,
-    isAuthenticated,
-    isLoading,
-    login,
-    logout,
-    setAuthData,
-  };
+  const value: AuthContextType = useMemo(
+    () => ({
+      user,
+      token,
+      isAuthenticated,
+      isLoading,
+      login,
+      logout,
+      setAuthData,
+    }),
+    [user, token, isAuthenticated, isLoading, login, logout]
+  );
 
   useEffect(() => {
     const initializeAuth = async () => {
+      if (hasInitialized.current) {
+        console.log("Auth already initialized, skipping");
+        return;
+      }
+      hasInitialized.current = true;
+
       // Check for existing auth data on mount
       const storedToken = localStorage.getItem(TOKEN_KEY);
       const storedUser = localStorage.getItem(USER_KEY);
@@ -157,7 +169,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     };
 
     initializeAuth();
-  }, [logout, validateToken]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run on mount
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

@@ -110,7 +110,7 @@ The Dockerfile automatically uses:
 ## 💰 Cost Estimate
 
 - **Railway:** Free tier (500 hours/month)
-- **Vercel:** Free tier (unlimited static deployments)  
+- **Vercel:** Free tier (unlimited static deployments)
 - **OpenAI API:** ~$0.01-0.10 per TL;DR
 - **Total:** Essentially **free for demos**
 
@@ -118,7 +118,7 @@ The Dockerfile automatically uses:
 
 ## 🔄 Alternative Platforms
 
-**Backend:** Render, Fly.io, Google Cloud Run, AWS ECS  
+**Backend:** Render, Fly.io, Google Cloud Run, AWS ECS
 **Frontend:** Netlify, GitHub Pages, Cloudflare Pages
 
 **Why Railway + Vercel?** Best GitHub integration, generous free tiers, zero config needed.

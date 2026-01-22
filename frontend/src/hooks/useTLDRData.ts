@@ -1,18 +1,11 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import {
   TLDRData,
   GitHubItem,
   Timeframe,
   StoredTLDRReport,
 } from "../types/github";
-import { TLDRStorage } from "../utils/tldrStorage";
 import { apiClient } from "../utils/apiClient";
-import { useAuth } from "./useAuth";
-import {
-  PeopleResponse,
-  PullRequestsResponse,
-  IssuesResponse,
-} from "../types/api";
 
 interface UseTLDRDataReturn {
   data: TLDRData;
@@ -20,14 +13,14 @@ interface UseTLDRDataReturn {
   error: string | null;
   lastReport: StoredTLDRReport | null;
   hasData: boolean;
-  generateReport: () => void;
+  cached: boolean;
+  generateReport: (force?: boolean) => void;
 }
 
 export const useTLDRData = (
   repo: string,
   timeframe: Timeframe,
 ): UseTLDRDataReturn => {
-  const { user } = useAuth();
   const [data, setData] = useState<TLDRData>({
     prs: null,
     issues: null,
@@ -37,6 +30,10 @@ export const useTLDRData = (
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastReport, setLastReport] = useState<StoredTLDRReport | null>(null);
+  const [cached, setCached] = useState(false);
+  const requestInFlightRef = useRef(false);
+  const lastRequestRef = useRef<string>("");
+  const activeRequestIdRef = useRef<number>(0);
 
   // Store abort controllers for each request type
   const abortControllersRef = useRef<{
@@ -46,17 +43,35 @@ export const useTLDRData = (
     tldr?: AbortController;
   }>({});
 
-  // Generate new report (manual)
-  const generateReport = useCallback(async () => {
+  // Generate new report with progressive loading (manual)
+  const generateReport = useCallback(async (force: boolean = false) => {
     if (!repo || !timeframe) return;
 
-    // Cancel any ongoing requests
-    Object.values(abortControllersRef.current).forEach((controller) => {
-      if (controller) {
-        controller.abort();
-      }
-    });
+    const requestKey = `${repo}-${timeframe}-${force}`;
+
+    // Prevent duplicate requests for the same repo+timeframe+force (React.StrictMode protection)
+    if (requestInFlightRef.current && lastRequestRef.current === requestKey) {
+      console.log("🔄 Request already in flight for", requestKey, "- skipping duplicate (StrictMode protection)");
+      // Ensure loading state is shown even for duplicate calls
+      setLoading(true);
+      return;
+    }
+
+    // Cancel any ongoing requests only if repo/timeframe changed
+    if (lastRequestRef.current && lastRequestRef.current !== requestKey) {
+      console.log("🚫 Aborting previous request for", lastRequestRef.current);
+      Object.values(abortControllersRef.current).forEach((controller) => {
+        if (controller) {
+          controller.abort();
+        }
+      });
+    }
     abortControllersRef.current = {};
+
+    // Generate unique request ID for this call
+    const currentRequestId = ++activeRequestIdRef.current;
+    requestInFlightRef.current = true;
+    lastRequestRef.current = requestKey;
 
     // Reset state and create fresh data object
     setLoading(true);
@@ -68,8 +83,7 @@ export const useTLDRData = (
       tldr: null,
     };
     setData(newData);
-
-    const requestPayload = { repo_url: repo, timeframe };
+    setCached(false);
 
     try {
       // Create abort controllers for each request
@@ -83,82 +97,99 @@ export const useTLDRData = (
         issues: issuesController,
       };
 
-      // 🔁 Load people right away (async)
+      // Parse repo owner/name from URL
+      // Handle both "owner/repo" and "https://github.com/owner/repo" formats
+      let repoPath = repo;
+      if (repo.startsWith("https://github.com/")) {
+        repoPath = repo.replace("https://github.com/", "");
+      } else if (repo.startsWith("http://github.com/")) {
+        repoPath = repo.replace("http://github.com/", "");
+      }
+      const [owner, repoName] = repoPath.split("/");
+
+      // 🔁 Load people right away (async and progressive)
       const peoplePromise = apiClient
-        .post<PeopleResponse>("people", requestPayload, {
+        .getReportSection(owner, repoName, "people", timeframe, force, {
           signal: peopleController.signal,
         })
         .then((data) => {
-          if (data?.people && !peopleController.signal.aborted) {
-            newData.people = data.people;
-            setData((prev) => ({ ...prev, people: data.people }));
+          // Only update if not aborted AND still the active request
+          if (!peopleController.signal.aborted && currentRequestId === activeRequestIdRef.current) {
+            const peopleData = data.people ?? null;
+            newData.people = peopleData;
+            setData((prev) => ({ ...prev, people: peopleData }));
+            if (data.cached) setCached(true);
           }
         })
         .catch((err) => {
-          if (!peopleController.signal.aborted) {
+          if (!peopleController.signal.aborted && currentRequestId === activeRequestIdRef.current) {
             console.error("Failed to fetch people:", err);
-            const errorMessage = err.message || "Failed to load contributors.";
-            setError(errorMessage);
           }
         });
 
       // ⚡ Fetch PRs (async and progressive)
       const prsPromise = apiClient
-        .post<PullRequestsResponse>("prs", requestPayload, {
+        .getReportSection(owner, repoName, "prs", timeframe, force, {
           signal: prsController.signal,
         })
         .then((data) => {
-          if (!prsController.signal.aborted) {
-            newData.prs = data.prs || [];
-            setData((prev) => ({ ...prev, prs: data.prs || [] }));
-            return data.prs || [];
+          // Only update if not aborted AND still the active request
+          if (!prsController.signal.aborted && currentRequestId === activeRequestIdRef.current) {
+            const prsData = data.prs ?? [];
+            newData.prs = prsData;
+            setData((prev) => ({ ...prev, prs: prsData }));
+            if (data.cached) setCached(true);
+            return prsData;
           }
           return [];
         });
 
       // ⚡ Fetch Issues (async and progressive)
       const issuesPromise = apiClient
-        .post<IssuesResponse>("issues", requestPayload, {
+        .getReportSection(owner, repoName, "issues", timeframe, force, {
           signal: issuesController.signal,
         })
         .then((data) => {
-          if (!issuesController.signal.aborted) {
-            newData.issues = data.issues || [];
-            setData((prev) => ({ ...prev, issues: data.issues || [] }));
-            return data.issues || [];
+          // Only update if not aborted AND still the active request
+          if (!issuesController.signal.aborted && currentRequestId === activeRequestIdRef.current) {
+            const issuesData = data.issues ?? [];
+            newData.issues = issuesData;
+            setData((prev) => ({ ...prev, issues: issuesData }));
+            if (data.cached) setCached(true);
+            return issuesData;
           }
           return [];
         });
 
       // ⏳ Wait for both PR and Issues before generating TLDR
-      const [prs, issues] = await Promise.all([prsPromise, issuesPromise]);
+      await Promise.all([prsPromise, issuesPromise]);
 
-      // Check if requests were cancelled before proceeding to TLDR
-      if (prsController.signal.aborted || issuesController.signal.aborted) {
+      // Check if requests were cancelled or superseded before proceeding to TLDR
+      if (
+        prsController.signal.aborted ||
+        issuesController.signal.aborted ||
+        currentRequestId !== activeRequestIdRef.current
+      ) {
         return;
       }
 
-      const summaries = [
-        ...prs.map((pr: GitHubItem) => pr.summary).filter(Boolean),
-        ...issues.map((issue: GitHubItem) => issue.summary).filter(Boolean),
-      ].join("\n");
+      // ⚡ Fetch TL;DR (streaming endpoint - waits for PRs and Issues to be available)
+      const tldrController = new AbortController();
+      abortControllersRef.current.tldr = tldrController;
 
-      if (summaries) {
-        const tldrController = new AbortController();
-        abortControllersRef.current.tldr = tldrController;
+      const forceParam = force ? "&force=true" : "";
+      const tldrRes = await apiClient.requestStream(
+        `/reports/${owner}/${repoName}/tldr?timeframe=${timeframe}${forceParam}`,
+        {
+          signal: tldrController.signal,
+        },
+      );
 
-        const tldrRes = await apiClient.postStream(
-          "tldr",
-          { text: summaries },
-          {
-            signal: tldrController.signal,
-          },
-        );
-
-        if (!tldrRes.ok || !tldrRes.body) {
-          throw new Error("Failed to fetch TLDR summary");
+      if (!tldrRes.ok || !tldrRes.body) {
+        if (currentRequestId === activeRequestIdRef.current) {
+          console.error("Failed to fetch TLDR summary");
         }
-
+      } else {
         const reader = tldrRes.body.getReader();
         const decoder = new TextDecoder();
         let result = "";
@@ -170,7 +201,8 @@ export const useTLDRData = (
           const chunk = decoder.decode(value, { stream: true });
           result += chunk;
 
-          if (!tldrController.signal.aborted) {
+          // Only update if still the active request
+          if (!tldrController.signal.aborted && currentRequestId === activeRequestIdRef.current) {
             newData.tldr = result;
             setData((prev) => ({ ...prev, tldr: result }));
           }
@@ -180,51 +212,52 @@ export const useTLDRData = (
       // Wait for people promise to complete
       await peoplePromise;
 
-      // Save successful report to storage
-      TLDRStorage.saveReport(repo, timeframe, newData, user);
-
-      // Update last report metadata
-      const savedReport = TLDRStorage.getReport(repo, timeframe, user);
-      if (savedReport) {
-        setLastReport(savedReport);
+      // Update last report metadata (only if still active request)
+      if (currentRequestId === activeRequestIdRef.current) {
+        setLastReport({
+          id: `${repo}:${timeframe}`,
+          repo,
+          timeframe,
+          data: newData,
+          generatedAt: new Date().toISOString(),
+          version: 3, // Version 3 = progressive loading with DB caching
+        });
       }
     } catch (err: unknown) {
-      if ((err as Error)?.name !== "AbortError") {
+      // Only handle errors if this is still the active request
+      if ((err as Error)?.name !== "AbortError" && currentRequestId === activeRequestIdRef.current) {
         console.error("Fetch error:", err);
-        // Preserve specific error messages from the backend
         const errorMessage =
           (err as Error)?.message ||
           "Failed to load TL;DR data. Please try again.";
         setError(errorMessage);
       }
     } finally {
-      setLoading(false);
+      // Only clear loading if this is still the active request
+      // This prevents cancelled requests from clearing the loading state
+      if (currentRequestId === activeRequestIdRef.current) {
+        setLoading(false);
+        requestInFlightRef.current = false;
+      }
     }
-  }, [repo, timeframe, user]);
+  }, [repo, timeframe]);
 
-  // Load stored data on mount or when repo/timeframe changes
+  // Automatically fetch report when repo or timeframe changes
   useEffect(() => {
-    if (!repo || !timeframe) return;
-
-    const storedReport = TLDRStorage.getReport(repo, timeframe, user);
-    if (storedReport) {
-      setLastReport(storedReport);
-      setData(storedReport.data);
-    } else {
-      setLastReport(null);
-      setData({ prs: null, issues: null, people: null, tldr: null });
+    if (repo && timeframe) {
+      generateReport(); // Uses cache if available and fresh
     }
-    setError(null);
-  }, [repo, timeframe, user]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [repo, timeframe]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      Object.values(abortControllersRef.current).forEach((controller) => {
-        if (controller) {
-          controller.abort();
-        }
-      });
+      // Don't abort requests or clear flags here to support StrictMode properly.
+      // The duplicate check (requestInFlightRef + lastRequestRef) will prevent
+      // the second mount from starting duplicate requests.
+      // The request ID tracking ensures stale requests don't update state.
+      // Only clear abort controllers to avoid memory leaks.
       abortControllersRef.current = {};
     };
   }, []);
@@ -237,6 +270,7 @@ export const useTLDRData = (
     error,
     lastReport,
     hasData,
+    cached,
     generateReport,
   };
 };

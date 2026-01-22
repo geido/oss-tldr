@@ -20,6 +20,14 @@ MAX_ITEMS_PER_SECTION = int(os.getenv("MAX_ITEMS_PER_SECTION", 10))
 
 # CORS settings
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+
+# Database settings
+DATABASE_URL = os.getenv(
+    "DATABASE_URL", "postgresql+asyncpg://oss_tldr:dev_password@postgres:5432/oss_tldr"
+)
+DB_POOL_SIZE = int(os.getenv("DB_POOL_SIZE", 20))
+DB_MAX_OVERFLOW = int(os.getenv("DB_MAX_OVERFLOW", 10))
+DB_POOL_TIMEOUT = int(os.getenv("DB_POOL_TIMEOUT", 30))
 COMMON_GITHUB_BOTS = {
     # Dependency / update bots
     "dependabot[bot]",
