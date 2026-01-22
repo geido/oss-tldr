@@ -107,3 +107,11 @@ export type StoredGroupReport = {
 export type DigestTarget =
   | { kind: "repo"; repo: string; label: string }
   | { kind: "group"; id?: string | null; name: string; repos: string[]; preset?: boolean };
+
+// API Response types for progressive loading endpoints
+export type ReportSectionResponse = {
+  prs?: GitHubItem[];
+  issues?: GitHubItem[];
+  people?: PeopleData[];
+  cached: boolean;
+};

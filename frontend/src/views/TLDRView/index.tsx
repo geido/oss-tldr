@@ -234,7 +234,7 @@ const TLDRView: React.FC<TLDRProps> = ({
   };
 
   const handleGenerateTLDR = () => {
-    generateReport();
+    generateReport(true); // Force fresh data when clicking Regenerate
   };
   return (
     <ResponsiveContainer>
@@ -285,6 +285,7 @@ const TLDRView: React.FC<TLDRProps> = ({
               Timeframe:
             </span>
             <Select
+              aria-label="Select timeframe"
               value={currentTimeframe}
               onChange={handleTimeframeChange}
               style={{ width: 120 }}
@@ -380,13 +381,32 @@ const TLDRView: React.FC<TLDRProps> = ({
         />
       )}
 
-      {!hasData && !loading ? (
+      {/* Show loading state when auto-generating */}
+      {loading && !hasData ? (
+        <ResponsiveCard style={{ textAlign: "center", padding: "2rem 1rem" }}>
+          <div style={{ padding: "2rem 0" }}>
+            <SyncOutlined
+              spin
+              style={{ fontSize: 48, color: "#1890ff", marginBottom: 16 }}
+            />
+            <Title level={4} style={{ color: "#666", fontSize: "1.1rem" }}>
+              Generating TL;DR...
+            </Title>
+            <Text type="secondary" style={{ fontSize: 14 }}>
+              Analyzing repository activity and generating summary
+            </Text>
+            <div style={{ marginTop: "2rem" }}>
+              <Skeleton active paragraph={{ rows: 2 }} style={{ maxWidth: 600, margin: "0 auto" }} />
+            </div>
+          </div>
+        </ResponsiveCard>
+      ) : !hasData && !loading ? (
         <ResponsiveCard style={{ textAlign: "center", padding: "2rem 1rem" }}>
           <Empty
             image={
               <ThunderboltOutlined style={{ fontSize: 48, color: "#1890ff" }} />
             }
-            imageStyle={{ height: 60 }}
+            styles={{ image: { height: 60 } }}
             description={
               <div>
                 <Title
@@ -432,7 +452,7 @@ const TLDRView: React.FC<TLDRProps> = ({
                     style={{ fontSize: 64, color: "#d9d9d9" }}
                   />
                 }
-                imageStyle={{ height: 80 }}
+                styles={{ image: { height: 80 } }}
                 description={
                   <div>
                     <Title

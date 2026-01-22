@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   Card,
   Col,
@@ -52,6 +52,8 @@ type SavedRepo = {
   description: string | null;
   stars: number;
   language: string | null;
+  name?: string;
+  stargazers_count?: number;
 };
 
 type DashboardProps = {
@@ -177,7 +179,6 @@ const StatItem = styled.div`
   }
 `;
 
-const BASE_STORAGE_KEY = "oss-tldr-repos";
 const BASE_GROUP_STORAGE_KEY = "oss-tldr-groups";
 
 const GroupCard = styled(Card)`
@@ -222,6 +223,7 @@ const DashboardView: React.FC<DashboardProps> = ({ onStartDigest }) => {
   const [form] = Form.useForm();
   const [groupForm] = Form.useForm();
   const { token } = theme.useToken();
+  const loadReposRequestedRef = useRef(false);
 
   const repoOptions = useMemo(
     () =>
@@ -232,33 +234,50 @@ const DashboardView: React.FC<DashboardProps> = ({ onStartDigest }) => {
     [repos],
   );
 
-  const loadReposFromStorage = useCallback(() => {
+  const loadReposFromDatabase = useCallback(async () => {
+    if (loadReposRequestedRef.current) {
+      console.log("Repos already loading, skipping duplicate request");
+      return;
+    }
+
+    loadReposRequestedRef.current = true;
     try {
-      const storageKey = UserStorage.getUserKey(BASE_STORAGE_KEY, user);
-      const saved = localStorage.getItem(storageKey);
-      if (saved) {
-        setRepos(JSON.parse(saved));
-      } else {
-        setRepos([]);
-      }
+      setLoading(true);
+      const response = await apiClient.getUserRepositories();
+      const repositories =
+        (response as { repositories?: SavedRepo[] }).repositories || [];
+
+      const mappedRepos: SavedRepo[] = repositories.map((repo) => {
+        const [owner, repoNameFromFullName] = repo.full_name.split("/");
+        const repoName = repo.name || repo.repo || repoNameFromFullName;
+        const starCount = repo.stargazers_count ?? repo.stars ?? 0;
+
+        return {
+          id: repo.full_name,
+          owner,
+          repo: repoName,
+          full_name: repo.full_name,
+          description: repo.description,
+          stars: starCount,
+          language: repo.language,
+          name: repo.name,
+          stargazers_count: repo.stargazers_count,
+        };
+      });
+
+      setRepos(mappedRepos);
     } catch (error) {
-      console.error("Failed to load repos from storage:", error);
+      console.error("Failed to load repos from database:", error);
+      // Don't show error message for auth errors - AuthGuard will handle it
+      if (error instanceof Error && error.message !== "Authentication required") {
+        message.error("Failed to load tracked repositories");
+      }
       setRepos([]);
     } finally {
       setLoading(false);
+      loadReposRequestedRef.current = false;
     }
-  }, [user]);
-
-  const saveReposToStorage = (newRepos: SavedRepo[]) => {
-    try {
-      const storageKey = UserStorage.getUserKey(BASE_STORAGE_KEY, user);
-      localStorage.setItem(storageKey, JSON.stringify(newRepos));
-      setRepos(newRepos);
-    } catch (error) {
-      console.error("Failed to save repos to storage:", error);
-      message.error("Failed to save repository");
-    }
-  };
+  }, []);
 
   const loadGroupsFromStorage = useCallback(() => {
     try {
@@ -299,57 +318,27 @@ const DashboardView: React.FC<DashboardProps> = ({ onStartDigest }) => {
     setValidating(true);
 
     try {
-      let repoData: RepoSummary;
-
-      if (selectedRepoData) {
-        // Use data from autocomplete selection
-        repoData = selectedRepoData;
-      } else {
-        // Fallback: extract from URL (shouldn't happen with autocomplete)
-        const url = new URL(values.repo_url);
-        const [, owner, repoName] = url.pathname.split("/");
-
-        if (!owner || !repoName) {
-          throw new Error("Invalid repository URL format");
-        }
-
-        repoData = {
-          name: repoName,
-          full_name: `${owner}/${repoName}`,
-          description: null,
-          html_url: values.repo_url,
-          private: false,
-          fork: false,
-          archived: false,
-          language: null,
-          stargazers_count: 0,
-          updated_at: new Date().toISOString(),
-        };
-      }
-
-      const newRepo: SavedRepo = {
-        id: repoData.full_name,
-        owner: repoData.full_name.split("/")[0],
-        repo: repoData.name,
-        full_name: repoData.full_name,
-        description: repoData.description,
-        stars: repoData.stargazers_count,
-        language: repoData.language,
-      };
-
       // Check if repo already exists
-      if (repos.some((repo) => repo.id === newRepo.id)) {
+      const url = new URL(values.repo_url);
+      const [, owner, repoName] = url.pathname.split("/");
+      const fullName = `${owner}/${repoName}`;
+
+      if (repos.some((repo) => repo.id === fullName)) {
         message.warning("Repository already exists in your dashboard");
         return;
       }
 
-      const updatedRepos = [...repos, newRepo];
-      saveReposToStorage(updatedRepos);
+      // Track repository via API
+      const response = await apiClient.trackRepository(values.repo_url);
+      const trackedRepo = (response as { repository: SavedRepo }).repository;
+
+      // Reload repositories from database
+      await loadReposFromDatabase();
 
       setIsModalVisible(false);
       form.resetFields();
       setSelectedRepoData(null);
-      message.success(`Successfully added ${newRepo.full_name}`);
+      message.success(`Successfully added ${trackedRepo.full_name}`);
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "Failed to add repository";
@@ -429,7 +418,7 @@ const DashboardView: React.FC<DashboardProps> = ({ onStartDigest }) => {
       saveGroupsToStorage([...customGroups, newGroup]);
       setGroupModalVisible(false);
       groupForm.resetFields();
-      message.success(`Created group “${newGroup.name}”`);
+      message.success(`Created group "${newGroup.name}"`);
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "Failed to create group";
@@ -439,10 +428,19 @@ const DashboardView: React.FC<DashboardProps> = ({ onStartDigest }) => {
     }
   };
 
-  const handleRemoveRepo = (repoId: string, repoName: string) => {
-    const updatedRepos = repos.filter((repo) => repo.id !== repoId);
-    saveReposToStorage(updatedRepos);
-    message.success(`${repoName} removed from dashboard`);
+  const handleRemoveRepo = async (repoId: string, repoName: string) => {
+    try {
+      const repoUrl = `https://github.com/${repoId}`;
+      await apiClient.untrackRepository(repoUrl);
+
+      // Reload repositories from database
+      await loadReposFromDatabase();
+
+      message.success(`${repoName} removed from dashboard`);
+    } catch (error) {
+      console.error("Failed to remove repository:", error);
+      message.error("Failed to remove repository");
+    }
   };
 
   const handleRepoClick = (repo: SavedRepo) => {
@@ -476,8 +474,12 @@ const DashboardView: React.FC<DashboardProps> = ({ onStartDigest }) => {
   };
 
   useEffect(() => {
-    loadReposFromStorage();
-  }, [loadReposFromStorage]); // Reload when user changes
+    // Only load repos if user is authenticated
+    if (user) {
+      loadReposFromDatabase();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]); // Only reload when user ID changes, not the whole user object
 
   useEffect(() => {
     loadGroupsFromStorage();
@@ -858,12 +860,14 @@ const DashboardView: React.FC<DashboardProps> = ({ onStartDigest }) => {
         footer={null}
         width={500}
         centered
+        forceRender
       >
         <Form
           form={form}
           layout="vertical"
           onFinish={handleAddRepo}
           style={{ paddingTop: 16 }}
+          preserve={false}
         >
           <Form.Item
             name="repo_url"

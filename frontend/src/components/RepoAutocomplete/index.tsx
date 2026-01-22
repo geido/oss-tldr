@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { Select, Spin, Tag, Empty } from "antd";
+import { Select, Spin, Tag, Empty, type SelectProps } from "antd";
 import {
   GithubOutlined,
   StarOutlined,
@@ -15,7 +15,7 @@ import {
   Repository,
 } from "../../types/api";
 
-const StyledSelect = styled(Select)`
+const StyledSelect = styled(Select<string>)<SelectProps<string>>`
   &.ant-select .ant-select-selector {
     border-radius: 8px;
   }
@@ -161,20 +161,22 @@ export const RepoAutocomplete: React.FC<RepoAutocompleteProps> = ({
     [excludeRepos],
   );
 
-  const handleSearch = (searchText: string) => {
+  const handleSearch: NonNullable<SelectProps<string>["onSearch"]> = (
+    searchText,
+  ) => {
     setSearchQuery(searchText);
   };
 
-  const handleChange = (repoUrl: unknown) => {
-    if (typeof repoUrl === "string") {
-      // Find the repo data from our state
-      const allRepos = [...userRepos, ...searchResults];
-      const selectedRepo = allRepos.find(
-        (repo) => `https://github.com/${repo.full_name}` === repoUrl,
-      );
+  const handleChange: NonNullable<SelectProps<string>["onChange"]> = (
+    repoUrl,
+  ) => {
+    // Find the repo data from our state
+    const allRepos = [...userRepos, ...searchResults];
+    const selectedRepo = allRepos.find(
+      (repo) => `https://github.com/${repo.full_name}` === repoUrl,
+    );
 
-      onChange?.(repoUrl, selectedRepo);
-    }
+    onChange?.(repoUrl, selectedRepo);
   };
 
   const handleClear = () => {
@@ -263,7 +265,7 @@ export const RepoAutocomplete: React.FC<RepoAutocompleteProps> = ({
   };
 
   // Build options array
-  const options = [];
+  const options: NonNullable<SelectProps<string>["options"]> = [];
 
   // Add user repos section if we have them and no search query
   if (userRepos.length > 0 && !searchQuery.trim()) {
@@ -316,6 +318,7 @@ export const RepoAutocomplete: React.FC<RepoAutocompleteProps> = ({
 
   return (
     <StyledSelect
+      aria-label="Repository search"
       value={value}
       onChange={handleChange}
       onSearch={handleSearch}
@@ -345,7 +348,7 @@ export const RepoAutocomplete: React.FC<RepoAutocompleteProps> = ({
             image={
               <SearchOutlined style={{ fontSize: 24, color: "#d9d9d9" }} />
             }
-            imageStyle={{ height: 40 }}
+            styles={{ image: { height: 40 } }}
             description={
               <span style={{ fontSize: 12, color: "#999" }}>
                 No repositories found for "{searchQuery}"
@@ -359,7 +362,7 @@ export const RepoAutocomplete: React.FC<RepoAutocompleteProps> = ({
             image={
               <GithubOutlined style={{ fontSize: 24, color: "#d9d9d9" }} />
             }
-            imageStyle={{ height: 40 }}
+            styles={{ image: { height: 40 } }}
             description={
               <span style={{ fontSize: 12, color: "#999" }}>
                 No accessible repositories found
