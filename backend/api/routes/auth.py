@@ -1,14 +1,19 @@
+"""Authentication routes."""
 import secrets
 from datetime import datetime, timedelta
-from typing import TypedDict
 from urllib.parse import urlencode
 
 import httpx
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.schemas import (
+    AuthUrlResponse,
+    CallbackRequest,
+    CallbackResponse,
+    ValidateResponse,
+)
 from config import (
     FRONTEND_URL,
     GITHUB_CLIENT_ID,
@@ -23,46 +28,14 @@ from repositories.users import UsersRepository
 router = APIRouter()
 
 
-class AuthUrlResponse(BaseModel):
-    auth_url: str
-    state: str
-
-
-class CallbackRequest(BaseModel):
-    code: str
-    state: str
-
-
-class CallbackResponse(BaseModel):
-    access_token: str
-    user: UserPayload
-    expires_at: str
-
-
-class UserPayload(TypedDict):
-    id: int
-    login: str
-    name: str | None
-    avatar_url: str | None
-    email: str | None
-
-
-class ValidateResponse(BaseModel):
-    valid: bool
-    user: UserPayload | None = None
-    expires_at: str | None = None
-
-
 @router.get("/auth/github/login")
 async def github_login() -> AuthUrlResponse:
     """
     Generate GitHub OAuth authorization URL.
 
     Scopes requested:
-    - repo: Access to public and private repositories (GitHub doesn't offer read-only private repo access)
+    - repo: Access to public and private repositories
     - read:user: Basic user profile information
-
-    Note: OSS TL;DR only performs READ operations - we never write, modify, or delete repository data.
     """
     if not GITHUB_CLIENT_ID:
         raise HTTPException(
@@ -70,10 +43,8 @@ async def github_login() -> AuthUrlResponse:
             detail="GitHub OAuth not configured",
         )
 
-    # Generate random state for CSRF protection
     state = secrets.token_urlsafe(32)
 
-    # GitHub OAuth parameters - repo scope needed for private repo access
     params = {
         "client_id": GITHUB_CLIENT_ID,
         "redirect_uri": f"{FRONTEND_URL}/auth/callback",
@@ -91,14 +62,13 @@ async def github_login() -> AuthUrlResponse:
 async def github_callback(
     payload: CallbackRequest, db: AsyncSession = Depends(get_db)
 ) -> CallbackResponse:
-    """Exchange GitHub OAuth code for access token and upsert user to database"""
+    """Exchange GitHub OAuth code for access token and upsert user to database."""
     if not GITHUB_CLIENT_ID or not GITHUB_CLIENT_SECRET:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="GitHub OAuth not configured",
         )
 
-    # Exchange code for access token
     async with httpx.AsyncClient() as client:
         token_response = await client.post(
             "https://github.com/login/oauth/access_token",
@@ -132,7 +102,6 @@ async def github_callback(
                 detail="No access token received from GitHub",
             )
 
-        # Get user info from GitHub
         user_response = await client.get(
             "https://api.github.com/user",
             headers={"Authorization": f"Bearer {github_token}"},
@@ -146,7 +115,6 @@ async def github_callback(
 
         user_data = user_response.json()
 
-        # Upsert user to database
         users_repo = UsersRepository(db)
         await users_repo.get_or_create_user(
             {
@@ -158,7 +126,6 @@ async def github_callback(
             }
         )
 
-        # Create JWT token
         expires_at = datetime.utcnow() + timedelta(hours=JWT_EXPIRE_HOURS)
         jwt_payload = {
             "github_token": github_token,
@@ -184,7 +151,7 @@ async def github_callback(
 
 @router.post("/auth/validate")
 async def validate_token(request: Request) -> ValidateResponse:
-    """Validate JWT token and check GitHub token is still valid"""
+    """Validate JWT token and check GitHub token is still valid."""
     authorization = request.headers.get("Authorization")
 
     if not authorization or not authorization.startswith("Bearer "):
@@ -193,7 +160,6 @@ async def validate_token(request: Request) -> ValidateResponse:
     token = authorization.replace("Bearer ", "")
 
     try:
-        # Decode JWT
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
         github_token = payload.get("github_token")
         user = payload.get("user")
@@ -201,7 +167,6 @@ async def validate_token(request: Request) -> ValidateResponse:
         if not github_token or not user:
             return ValidateResponse(valid=False)
 
-        # Verify GitHub token is still valid
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 "https://api.github.com/user",

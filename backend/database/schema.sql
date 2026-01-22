@@ -114,3 +114,38 @@ CREATE TRIGGER update_repositories_updated_at
     BEFORE UPDATE ON repositories
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
+
+-- Groups table (for organizing repository collections)
+-- Groups can be system-defined (predefined, shared) or user-created (private)
+CREATE TABLE groups (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,               -- Display name
+    description TEXT,                         -- Optional description
+    slug VARCHAR(255) NOT NULL UNIQUE,        -- URL-friendly identifier
+    is_system BOOLEAN DEFAULT FALSE NOT NULL, -- True for predefined system groups
+    created_by_id BIGINT REFERENCES users(id) ON DELETE CASCADE,  -- NULL for system groups
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE
+);
+
+CREATE INDEX idx_groups_slug ON groups(slug);
+CREATE INDEX idx_groups_is_system ON groups(is_system);
+CREATE INDEX idx_groups_created_by_id ON groups(created_by_id);
+
+-- Group-Repository junction table (which repos belong to which groups)
+-- Uses repository identifiers (owner/repo) rather than FK to repositories table
+-- since groups can reference repos that haven't been fully tracked yet
+CREATE TABLE group_repositories (
+    id SERIAL PRIMARY KEY,
+    group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+    repository_identifier VARCHAR(255) NOT NULL,  -- "owner/repo" format
+    position INTEGER DEFAULT 0 NOT NULL,          -- For ordering repos within a group
+    UNIQUE(group_id, repository_identifier)
+);
+
+CREATE INDEX idx_group_repositories_group_id ON group_repositories(group_id);
+
+CREATE TRIGGER update_groups_updated_at
+    BEFORE UPDATE ON groups
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();

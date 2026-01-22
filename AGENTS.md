@@ -10,7 +10,7 @@ This file should remain in sync with CLAUDE.md to ensure consistency across all 
 
 ## Project Overview
 
-OSS TL;DR is a multi-user FastAPI + React application that generates AI-powered summaries of GitHub repositories. The application features secure GitHub OAuth authentication, smart repository discovery, and user-specific data isolation. The backend uses OpenAI for content generation and PyGithub for GitHub API access.
+OSS TL;DR is a multi-user FastAPI + React application that generates AI-powered summaries of GitHub repositories. The application features secure GitHub OAuth authentication, smart repository discovery, database-backed persistence, and user-specific data isolation. The backend uses OpenAI for content generation and PyGithub for GitHub API access.
 
 ## 🚨 CRITICAL UX PRINCIPLES 🚨
 
@@ -32,7 +32,7 @@ Frontend fires parallel requests:
   → GET /reports/{owner}/{repo}/prs?timeframe=X      (checks cache, returns/generates PRs)
   → GET /reports/{owner}/{repo}/issues?timeframe=X   (checks cache, returns/generates Issues)
   → GET /reports/{owner}/{repo}/people?timeframe=X   (checks cache, returns/generates People)
-  → POST /tldr (after prs+issues complete)           (streams AI-generated summary)
+  → GET /reports/{owner}/{repo}/tldr?timeframe=X     (checks cache or streams fresh)
 
 Each endpoint:
   1. Checks database cache for that section
@@ -89,18 +89,17 @@ const abortController = new AbortController();
 
 ### Database-Backed Caching Strategy
 
-All report sections (PRs, Issues, People) MUST be cached in PostgreSQL:
+All report sections (PRs, Issues, People, TL;DR) are cached in PostgreSQL:
 
 - **Deterministic timeframes** - Date ranges based on day boundaries, not rolling windows:
   - `last_day`: Yesterday (00:00:00 to 23:59:59)
   - `last_week`: Last 7 complete days (not including today)
   - `last_month`: Last 30 complete days (not including today)
   - `last_year`: Last 365 complete days (not including today)
-- **No expiration** - Once generated for a timeframe, data never changes (Oct 14-20 is always Oct 14-20)
-- **Per-section caching** - PRs, Issues, and People load independently
+- **Permanent caching** - Once generated for a timeframe, data never changes (Oct 14-20 is always Oct 14-20)
+- **Per-section caching** - PRs, Issues, People, and TL;DR cached independently
 - **Shared across users** - Same repo+timeframe uses same cached data
 - **Cache-first approach**: Always check cache before generating
-- **TL;DR is NOT cached** - Always streamed fresh (user-specific summaries)
 
 ## Development Commands
 
@@ -131,9 +130,10 @@ docker compose up
 #### Backend
 ```bash
 cd backend
-poetry run black .      # Code formatting
+poetry run black .       # Code formatting
 poetry run ruff check .  # Linting
 poetry run mypy .        # Type checking
+poetry run pytest tests/unit/ -v  # Unit tests
 ./scripts/run_checks.sh  # Run all checks
 ```
 
@@ -143,6 +143,7 @@ cd frontend
 npm run lint            # ESLint
 npm run type           # TypeScript check
 npm run format         # Prettier formatting
+npm test               # Run tests
 ```
 
 #### Pre-commit
@@ -154,21 +155,23 @@ pre-commit run --all-files
 ## Architecture
 
 ### Database & Persistence
-- **PostgreSQL** database for persistent storage of users, repositories, and reports
+- **PostgreSQL** database for persistent storage
 - **SQLAlchemy ORM** with async support (asyncpg driver)
-- **Database models** in `backend/database/models.py`:
-  - `User` - GitHub user information
-  - `Repository` - Cached repository metadata
-  - `Report` - Generated TL;DR reports with expiration
-  - `UserRepository` - User-repository tracking (many-to-many)
-  - `UserReportAccess` - Report access tracking
+- **Database models** in `backend/database/models/` (separate files per model):
+  - `user.py` - GitHub user information
+  - `repository.py` - Cached repository metadata
+  - `report.py` - Generated TL;DR reports with section-level caching
+  - `user_repository.py` - User-repository tracking (many-to-many)
+  - `user_report_access.py` - Report access tracking
+  - `group.py` - Repository groups (system and user-created)
 - **Repository pattern** in `backend/repositories/` for data access layer
-- **Intelligent caching**: Reports shared across users with configurable expiration
-- **Cache expiration policy**:
-  - `last_day`: 1 hour
-  - `last_week`: 6 hours
-  - `last_month`: 24 hours
-  - `last_year`: 7 days
+- **Intelligent caching**: Reports shared across users, permanently cached per timeframe
+
+### Groups Feature
+- **System groups**: Predefined in `backend/groups/*.yaml`, seeded to database on startup
+- **User groups**: Created via API, stored in database
+- **Group reports**: Aggregated TL;DR across multiple repositories
+- **CRUD endpoints**: Create, read, update, delete user groups
 
 ### Authentication & Security
 - **GitHub OAuth 2.0** flow with JWT token management
@@ -178,47 +181,101 @@ pre-commit run --all-files
 - **User upsert on login** to sync GitHub user data with database
 
 ### Backend Structure
-- **FastAPI routers** in `api/` handle different endpoints:
-  - `auth.py` - GitHub OAuth flow and token validation
-  - `repos.py` - User repository discovery and search
-  - `reports.py` - Progressive report endpoints with database caching (prs, issues, people)
-  - `user_repos.py` - User repository tracking (DB-backed)
-  - `tldr.py` - Streaming TL;DR generation
-  - `diff.py`, `deepdive.py` - Advanced analysis features
-- **Database layer**:
-  - `database/connection.py` - Async database session management
-  - `database/models.py` - SQLAlchemy ORM models
-  - `repositories/*.py` - Repository pattern for data access
-- **Services** in `services/` contain business logic for GitHub API integration and AI generation
-- **GitHub client** (`services/github_client.py`) provides async GitHub API operations with rate limiting
-- **Models** in `models/` define data structures for GitHub entities
-- **Config** (`config.py`) manages environment variables and GitHub OAuth settings
+
+```
+backend/
+├── api/                          # API layer (restructured)
+│   ├── __init__.py               # Creates API router
+│   ├── schemas/                  # Request/Response Pydantic models
+│   │   ├── common.py             # Shared models (Timeframe, RepositorySummary)
+│   │   ├── auth.py               # Auth schemas
+│   │   ├── groups.py             # Group schemas
+│   │   ├── reports.py            # Report section schemas
+│   │   ├── repos.py              # Repository search schemas
+│   │   └── users.py              # User tracking schemas
+│   ├── routes/                   # FastAPI route handlers
+│   │   ├── auth.py               # GitHub OAuth flow
+│   │   ├── deepdive.py           # Deep dive analysis
+│   │   ├── diff.py               # Diff explanation
+│   │   ├── groups.py             # Group CRUD & reports
+│   │   ├── reports.py            # Progressive report sections
+│   │   ├── repos.py              # Repository discovery
+│   │   └── users.py              # User repository tracking
+│   └── helpers/                  # Utility functions for routes
+│       └── groups.py             # Group helpers (slug generation, etc.)
+├── database/
+│   ├── connection.py             # Async database session
+│   ├── schema.sql                # SQL schema definition
+│   └── models/                   # SQLAlchemy ORM models
+│       ├── user.py
+│       ├── repository.py
+│       ├── report.py
+│       ├── user_repository.py
+│       ├── user_report_access.py
+│       └── group.py
+├── repositories/                 # Data access layer
+│   ├── users.py
+│   ├── repositories.py
+│   ├── reports.py
+│   ├── user_repositories.py
+│   └── groups.py
+├── services/                     # Business logic
+│   ├── github_client.py          # GitHub API operations
+│   ├── tldr_generator.py         # AI summary generation
+│   ├── group_report.py           # Group report generation
+│   └── ...
+├── middleware/
+│   └── auth.py                   # JWT validation middleware
+├── models/
+│   └── github.py                 # GitHub entity data structures
+├── utils/
+│   ├── dates.py                  # Timeframe resolution
+│   ├── group_config.py           # YAML config loading & seeding
+│   └── ...
+└── config.py                     # Environment configuration
+```
 
 ### Frontend Structure
 - **React 19** with TypeScript and strict mode
-- **Ant Design** for UI components with custom styled-components for mobile responsiveness
+- **Ant Design** for UI components with custom styled-components
 - **Main views**:
-  - `DashboardView` - Multi-repository management with autocomplete search
-  - `TLDRView` - Results display with progressive loading and mobile optimization
+  - `DashboardView` - Repository and group management
+  - `TLDRView` - Single repository report with progressive loading
+  - `GroupTLDRView` - Multi-repository group report
 - **Components**:
-  - `RepoAutocomplete` - Smart repository discovery with user repos and public search
-  - `IssueListItem` - Individual PR/issue display with diff and deep dive features
-  - `LoadableCollapse` - Progressive loading interface for large data sets
+  - `RepoAutocomplete` - Smart repository discovery
+  - `IssueListItem` - PR/issue display with diff and deep dive
+  - `LoadableCollapse` - Progressive loading interface
 - **Hooks**:
-  - `useTLDRData` - Manages TL;DR data loading (database-backed)
+  - `useTLDRData` - Single repo report data loading
+  - `useGroupTLDRData` - Group report data loading
 - **Utils**:
-  - `apiClient.ts` - Authenticated API client with database-backed methods
+  - `apiClient.ts` - Authenticated API client
 
-### Key Integration Points
-- **Progressive report loading with database caching**:
-  - `GET /api/v1/reports/{owner}/{repo}/prs?timeframe=X` - Cached PR data
-  - `GET /api/v1/reports/{owner}/{repo}/issues?timeframe=X` - Cached issue data
-  - `GET /api/v1/reports/{owner}/{repo}/people?timeframe=X` - Cached contributor data
-  - `POST /api/v1/tldr` - Streaming TL;DR generation (not cached)
-- **User repository tracking**: `/api/v1/users/me/repositories` (GET/POST/DELETE)
-- **Repository discovery**: `/api/v1/repos/user` and `/api/v1/repos/search`
-- **GitHub search API** for filtering and scoring items by engagement
-- **OpenAI integration** for content generation with configurable models
+### Key API Endpoints
+
+**Reports (Progressive Loading)**:
+- `GET /api/v1/reports/{owner}/{repo}/prs?timeframe=X` - Cached PR data
+- `GET /api/v1/reports/{owner}/{repo}/issues?timeframe=X` - Cached issue data
+- `GET /api/v1/reports/{owner}/{repo}/people?timeframe=X` - Cached contributor data
+- `GET /api/v1/reports/{owner}/{repo}/tldr?timeframe=X` - Streaming TL;DR
+
+**Groups**:
+- `GET /api/v1/groups` - List system and user groups
+- `POST /api/v1/groups` - Create user group
+- `GET /api/v1/groups/{id}` - Get group details
+- `PUT /api/v1/groups/{id}` - Update user group
+- `DELETE /api/v1/groups/{id}` - Delete user group
+- `POST /api/v1/groups/report` - Generate group report
+
+**User Repository Tracking**:
+- `GET /api/v1/users/me/repositories` - List tracked repos
+- `POST /api/v1/users/me/repositories` - Track a repo
+- `DELETE /api/v1/users/me/repositories` - Untrack a repo
+
+**Repository Discovery**:
+- `GET /api/v1/repos/user` - User's accessible repos
+- `GET /api/v1/repos/search?q=...` - Search public repos
 
 ## Environment Setup
 
@@ -248,9 +305,9 @@ Required environment variables in `backend/.env`:
 2. **Callback**: GitHub redirects to `/auth/callback` with code
 3. **Token Exchange**: Backend exchanges code for GitHub token and user info
 4. **JWT Creation**: Backend creates JWT with user data and GitHub token
-5. **Client Storage**: Frontend stores JWT and user data in localStorage
-6. **API Requests**: All API requests include JWT in Authorization header
-7. **User Switching**: Automatic detection and cleanup when user changes
+5. **User Upsert**: User record created/updated in database
+6. **Client Storage**: Frontend stores JWT in localStorage
+7. **API Requests**: All API requests include JWT in Authorization header
 
 ## Development Notes
 
@@ -259,7 +316,7 @@ Required environment variables in `backend/.env`:
 - Rate limiting protection built into GitHub client with configurable thresholds
 - Bot filtering configured in `config.py` to exclude common GitHub bots from analysis
 - Authentication middleware automatically validates JWT and provides GitHub client
-- User-aware storage ensures data isolation between different GitHub users
+- TYPE_CHECKING imports for forward references in SQLAlchemy models
 
 ### Frontend Patterns
 - Progressive loading to show results as they become available
@@ -267,21 +324,17 @@ Required environment variables in `backend/.env`:
 - Mobile-first responsive design using styled-components
 - User context management with AuthContext for authentication state
 - Automatic token validation and refresh handling
-- Repository autocomplete with smart filtering and caching
 
 ### Security Considerations
 - GitHub OAuth scope is "repo" (read-only access) with transparent user messaging
 - JWT tokens automatically validated on each API request
 - User data completely isolated - no cross-user data leakage
-- Automatic cleanup when switching between GitHub accounts
 - CORS properly configured for cross-origin requests
 
 ### Storage Strategy
-- **User-specific keys**: All localStorage uses format `${key}:${userId}`
-- **Automatic cleanup**: Previous user data cleared when switching accounts
-- **Persistence**: Data preserved for same user across sessions
-- **Repository storage**: `oss-tldr-repos:${userId}`
-- **TL;DR storage**: `oss-tldr-reports:${userId}`
+- **Database-backed**: All user data (repos, groups, reports) stored in PostgreSQL
+- **localStorage**: Only used for JWT auth token and user info
+- **No client-side caching**: Reports fetched from database on each view
 
 ## Mobile Responsiveness
 

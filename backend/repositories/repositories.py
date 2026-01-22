@@ -21,7 +21,9 @@ class RepositoriesRepository(BaseRepository[Repository]):
         )
         return result.scalar_one_or_none()
 
-    async def get_or_create_repository(self, repo_data: dict[str, object]) -> Repository:
+    async def get_or_create_repository(
+        self, repo_data: dict[str, object]
+    ) -> Repository:
         """
         Get or create repository from GitHub data.
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   Card,
   Col,
@@ -16,6 +16,7 @@ import {
   Avatar,
   theme,
   Popconfirm,
+  Select,
 } from "antd";
 import {
   PlusOutlined,
@@ -23,14 +24,23 @@ import {
   DeleteOutlined,
   StarOutlined,
   CodeOutlined,
+  AppstoreOutlined,
 } from "@ant-design/icons";
 import styled from "styled-components";
-import { Timeframe, RepoSummary } from "../../types/github";
+import {
+  DigestTarget,
+  GroupDefinition,
+  RepoSummary,
+  Timeframe,
+} from "../../types/github";
 import { apiClient } from "../../utils/apiClient";
 import { useAuth } from "../../hooks/useAuth";
 import { RepoAutocomplete } from "../../components";
+import { GroupListResponse, GroupResponse } from "../../types/api";
+import { normalizeRepoIdentifier } from "../../utils/repoUtils";
 
 const { Title, Text } = Typography;
+const { Option } = Select;
 
 type SavedRepo = {
   id: string;
@@ -45,7 +55,7 @@ type SavedRepo = {
 };
 
 type DashboardProps = {
-  onStartDigest: (repo: string, timeframe: Timeframe) => void;
+  onStartDigest: (target: DigestTarget, timeframe: Timeframe) => void;
 };
 
 const StyledCard = styled(Card)`
@@ -160,15 +170,59 @@ const StatItem = styled.div`
   }
 `;
 
+const GroupCard = styled(Card)`
+  height: 220px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  border-radius: ${({ theme }) => theme.token.borderRadiusLG}px;
+  box-shadow: ${({ theme }) => theme.token.boxShadowSecondary};
+
+  .ant-card-body {
+    padding: ${({ theme }) => theme.token.paddingLG}px;
+    display: flex;
+    flex-direction: column;
+    gap: ${({ theme }) => theme.token.margin}px;
+  }
+`;
+
+const GroupHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: ${({ theme }) => theme.token.marginSM}px;
+`;
+
+const GroupName = styled(Text)`
+  font-size: ${({ theme }) => theme.token.fontSizeLG}px;
+  font-weight: 600;
+`;
+
 const DashboardView: React.FC<DashboardProps> = ({ onStartDigest }) => {
   const { user, logout } = useAuth();
   const [repos, setRepos] = useState<SavedRepo[]>([]);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [validating, setValidating] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [systemGroups, setSystemGroups] = useState<GroupDefinition[]>([]);
+  const [userGroups, setUserGroups] = useState<GroupDefinition[]>([]);
+  const [groupsLoading, setGroupsLoading] = useState(true);
+  const [groupModalVisible, setGroupModalVisible] = useState(false);
+  const [groupValidating, setGroupValidating] = useState(false);
   const [form] = Form.useForm();
+  const [groupForm] = Form.useForm();
   const { token } = theme.useToken();
   const loadReposRequestedRef = useRef(false);
+  const loadGroupsRequestedRef = useRef(false);
+
+  const repoOptions = useMemo(
+    () =>
+      repos.map((repo) => ({
+        value: repo.full_name,
+        label: repo.full_name,
+      })),
+    [repos],
+  );
 
   const loadReposFromDatabase = useCallback(async () => {
     if (loadReposRequestedRef.current) {
@@ -215,10 +269,48 @@ const DashboardView: React.FC<DashboardProps> = ({ onStartDigest }) => {
     }
   }, []);
 
-  const [, setSelectedRepoData] = useState<RepoSummary | null>(null);
+  const loadGroupsFromDatabase = useCallback(async () => {
+    if (loadGroupsRequestedRef.current) {
+      console.log("Groups already loading, skipping duplicate request");
+      return;
+    }
 
-  const handleRepoSelect = (repoUrl: string, repoData?: RepoSummary) => {
-    setSelectedRepoData(repoData || null);
+    loadGroupsRequestedRef.current = true;
+    try {
+      setGroupsLoading(true);
+      const response = await apiClient.get<GroupListResponse>("groups");
+      setSystemGroups(
+        response.system_groups.map((g) => ({
+          id: g.id,
+          name: g.name,
+          description: g.description,
+          repos: g.repos,
+          is_system: true,
+        })),
+      );
+      setUserGroups(
+        response.user_groups.map((g) => ({
+          id: g.id,
+          name: g.name,
+          description: g.description,
+          repos: g.repos,
+          is_system: false,
+        })),
+      );
+    } catch (error) {
+      console.error("Failed to load groups from database:", error);
+      if (error instanceof Error && error.message !== "Authentication required") {
+        message.error("Failed to load groups");
+      }
+      setSystemGroups([]);
+      setUserGroups([]);
+    } finally {
+      setGroupsLoading(false);
+      loadGroupsRequestedRef.current = false;
+    }
+  }, []);
+
+  const handleRepoSelect = (repoUrl: string, _repoData?: RepoSummary) => {
     form.setFieldsValue({ repo_url: repoUrl });
   };
 
@@ -245,7 +337,6 @@ const DashboardView: React.FC<DashboardProps> = ({ onStartDigest }) => {
 
       setIsModalVisible(false);
       form.resetFields();
-      setSelectedRepoData(null);
       message.success(`Successfully added ${trackedRepo.full_name}`);
     } catch (error) {
       const errorMessage =
@@ -285,6 +376,51 @@ const DashboardView: React.FC<DashboardProps> = ({ onStartDigest }) => {
     }
   };
 
+  const handleAddGroup = async (values: {
+    name: string;
+    repos: string[];
+    description?: string;
+  }) => {
+    setGroupValidating(true);
+
+    try {
+      const normalizedRepos = Array.from(
+        new Set(
+          values.repos.map((repo) => normalizeRepoIdentifier(repo)).filter(Boolean),
+        ),
+      );
+
+      if (normalizedRepos.length === 0) {
+        throw new Error("Add at least one repository to the group");
+      }
+
+      const trimmedName = values.name.trim();
+      if (!trimmedName) {
+        throw new Error("Group name is required");
+      }
+
+      // Create group via API
+      const response = await apiClient.createGroup(
+        trimmedName,
+        normalizedRepos,
+        values.description?.trim() || null,
+      ) as GroupResponse;
+
+      // Reload groups from database
+      await loadGroupsFromDatabase();
+
+      setGroupModalVisible(false);
+      groupForm.resetFields();
+      message.success(`Created group "${response.group.name}"`);
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to create group";
+      message.error(errorMessage);
+    } finally {
+      setGroupValidating(false);
+    }
+  };
+
   const handleRemoveRepo = async (repoId: string, repoName: string) => {
     try {
       const repoUrl = `https://github.com/${repoId}`;
@@ -302,13 +438,43 @@ const DashboardView: React.FC<DashboardProps> = ({ onStartDigest }) => {
 
   const handleRepoClick = (repo: SavedRepo) => {
     const repoUrl = `https://github.com/${repo.full_name}`;
-    onStartDigest(repoUrl, "last_week");
+    onStartDigest(
+      { kind: "repo", repo: repoUrl, label: repo.full_name },
+      "last_week",
+    );
+  };
+
+  const handleGroupStart = (group: GroupDefinition) => {
+    onStartDigest(
+      {
+        kind: "group",
+        id: group.id,
+        name: group.name,
+        repos: group.repos,
+        is_system: group.is_system,
+      },
+      "last_week",
+    );
+  };
+
+  const handleRemoveGroup = async (groupId: string) => {
+    try {
+      await apiClient.deleteGroup(groupId);
+      await loadGroupsFromDatabase();
+      message.success("Group removed");
+    } catch (error) {
+      console.error("Failed to remove group:", error);
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to remove group";
+      message.error(errorMessage);
+    }
   };
 
   useEffect(() => {
-    // Only load repos if user is authenticated
+    // Only load data if user is authenticated
     if (user) {
       loadReposFromDatabase();
+      loadGroupsFromDatabase();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]); // Only reload when user ID changes, not the whole user object
@@ -533,6 +699,119 @@ const DashboardView: React.FC<DashboardProps> = ({ onStartDigest }) => {
         </Row>
       )}
 
+      <div style={{ marginTop: "4rem" }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: "1rem",
+            marginBottom: "1.5rem",
+          }}
+        >
+          <div>
+            <Title level={3} style={{ marginBottom: 4 }}>
+              Group Reports
+            </Title>
+            <Text type="secondary">
+              Summaries across curated collections of repositories
+            </Text>
+          </div>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => setGroupModalVisible(true)}
+          >
+            Create Group
+          </Button>
+        </div>
+
+        {groupsLoading ? (
+          <div style={{ textAlign: "center", padding: "3rem 0" }}>
+            <Spin size="large" />
+          </div>
+        ) : userGroups.length === 0 && systemGroups.length === 0 ? (
+          <Card style={{ textAlign: "center" }}>
+            <AppstoreOutlined
+              style={{
+                fontSize: 48,
+                color: token.colorTextSecondary,
+                marginBottom: 16,
+              }}
+            />
+            <Title level={4} style={{ marginBottom: 8 }}>
+              No groups yet
+            </Title>
+            <Text type="secondary">
+              Create a group or use one of the curated presets to get started.
+            </Text>
+          </Card>
+        ) : (
+          <Row gutter={[24, 24]}>
+            {userGroups.map((group) => (
+              <Col xs={24} md={12} lg={8} key={group.id}>
+                <GroupCard>
+                  <div>
+                    <GroupHeader>
+                      <GroupName>{group.name}</GroupName>
+                      <Popconfirm
+                        title="Remove Group"
+                        description={`Remove “${group.name}” from your dashboard?`}
+                        onConfirm={() => handleRemoveGroup(group.id)}
+                        okType="danger"
+                        okText="Remove"
+                      >
+                        <Button type="text" danger icon={<DeleteOutlined />} />
+                      </Popconfirm>
+                    </GroupHeader>
+                    {group.description && (
+                      <Text type="secondary">{group.description}</Text>
+                    )}
+                    <Text type="secondary" style={{ display: "block" }}>
+                      {group.repos.slice(0, 3).join(", ")}
+                      {group.repos.length > 3 && " …"}
+                    </Text>
+                  </div>
+                  <Space style={{ justifyContent: "space-between" }}>
+                    <Tag color="blue">{group.repos.length} repos</Tag>
+                    <Button type="primary" onClick={() => handleGroupStart(group)}>
+                      Open Report
+                    </Button>
+                  </Space>
+                </GroupCard>
+              </Col>
+            ))}
+
+            {systemGroups.map((group) => (
+              <Col xs={24} md={12} lg={8} key={`system-${group.id}`}>
+                <GroupCard>
+                  <div>
+                    <GroupHeader>
+                      <GroupName>{group.name}</GroupName>
+                      <Tag color="purple" style={{ marginLeft: 8 }}>System</Tag>
+                    </GroupHeader>
+                    {group.description && (
+                      <Text type="secondary">{group.description}</Text>
+                    )}
+                    <Text type="secondary" style={{ display: "block" }}>
+                      {group.repos.slice(0, 3).join(", ")}
+                      {group.repos.length > 3 && " …"}
+                    </Text>
+                  </div>
+                  <Space style={{ justifyContent: "space-between" }}>
+                    <Tag color="geekblue">{group.repos.length} repos</Tag>
+                    <Button onClick={() => handleGroupStart(group)}>
+                      View Summary
+                    </Button>
+                  </Space>
+                </GroupCard>
+              </Col>
+            ))}
+          </Row>
+        )}
+      </div>
+
       <Modal
         title={
           <div style={{ textAlign: "center", paddingBottom: 16 }}>
@@ -555,7 +834,6 @@ const DashboardView: React.FC<DashboardProps> = ({ onStartDigest }) => {
         onCancel={() => {
           setIsModalVisible(false);
           form.resetFields();
-          setSelectedRepoData(null);
         }}
         footer={null}
         width={500}
@@ -602,6 +880,84 @@ const DashboardView: React.FC<DashboardProps> = ({ onStartDigest }) => {
                 style={{ minWidth: 140 }}
               >
                 {validating ? "Validating..." : "Add Repository"}
+              </Button>
+            </Space>
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={
+          <div style={{ textAlign: "center", paddingBottom: 12 }}>
+            <AppstoreOutlined
+              style={{ fontSize: 24, color: token.colorPrimary, marginBottom: 8 }}
+            />
+            <Title level={4} style={{ margin: 0 }}>
+              Create Group
+            </Title>
+            <Text type="secondary">
+              Combine multiple repositories into a themed report
+            </Text>
+          </div>
+        }
+        open={groupModalVisible}
+        onCancel={() => {
+          setGroupModalVisible(false);
+          groupForm.resetFields();
+        }}
+        footer={null}
+        width={520}
+        centered
+      >
+        <Form
+          form={groupForm}
+          layout="vertical"
+          onFinish={handleAddGroup}
+          style={{ paddingTop: 12 }}
+        >
+          <Form.Item
+            name="name"
+            label="Group name"
+            rules={[{ required: true, message: "Please provide a group name" }]}
+          >
+            <Input placeholder="e.g. AI Landscape" size="large" />
+          </Form.Item>
+
+          <Form.Item
+            name="repos"
+            label="Repositories"
+            rules={[
+              {
+                required: true,
+                message: "Add at least one repository",
+              },
+            ]}
+          >
+            <Select
+              mode="tags"
+              size="large"
+              placeholder="Add repositories (owner/repo or GitHub URL)"
+              options={repoOptions}
+            />
+          </Form.Item>
+
+          <Form.Item name="description" label="Description (optional)">
+            <Input.TextArea rows={3} maxLength={160} showCount />
+          </Form.Item>
+
+          <Form.Item style={{ marginBottom: 0, marginTop: 24 }}>
+            <Space style={{ width: "100%", justifyContent: "flex-end" }}>
+              <Button onClick={() => setGroupModalVisible(false)} size="large">
+                Cancel
+              </Button>
+              <Button
+                type="primary"
+                htmlType="submit"
+                loading={groupValidating}
+                size="large"
+                style={{ minWidth: 160 }}
+              >
+                {groupValidating ? "Saving..." : "Create Group"}
               </Button>
             </Space>
           </Form.Item>

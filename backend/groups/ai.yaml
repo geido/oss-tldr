@@ -1,0 +1,7 @@
+id: ai
+name: AI Highlights
+description: Key open-source projects in the AI and machine learning ecosystem.
+repos:
+  - huggingface/transformers
+  - pytorch/pytorch
+  - openai/openai-python

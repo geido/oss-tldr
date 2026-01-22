@@ -180,6 +180,59 @@ class ApiClient {
   async untrackRepository(repo_url: string) {
     return this.delete("/users/me/repositories", { repo_url });
   }
+
+  // Group management API methods
+
+  /**
+   * Get all groups accessible to the current user (system + user-created)
+   */
+  async getGroups() {
+    return this.get("/groups");
+  }
+
+  /**
+   * Create a new user-defined group
+   */
+  async createGroup(name: string, repos: string[], description?: string | null) {
+    return this.post("/groups", {
+      name,
+      repos,
+      ...(description ? { description } : {}),
+    });
+  }
+
+  /**
+   * Update an existing user-defined group
+   */
+  async updateGroup(
+    groupId: string,
+    updates: { name?: string; repos?: string[]; description?: string | null },
+  ) {
+    return this.request(`/groups/${groupId}`, {
+      method: "PUT",
+      body: JSON.stringify(updates),
+    });
+  }
+
+  /**
+   * Delete a user-defined group
+   */
+  async deleteGroup(groupId: string) {
+    return this.request(`/groups/${groupId}`, { method: "DELETE" });
+  }
+
+  /**
+   * Generate a TL;DR report for a group
+   */
+  async generateGroupReport(
+    timeframe: string,
+    options: { group_id?: string; name?: string; repos?: string[] },
+  ) {
+    return this.post("/groups/report", {
+      timeframe,
+      ...options,
+    });
+  }
 }
 
 export const apiClient = new ApiClient();

@@ -73,6 +73,42 @@ export type RepoSummary = {
   updated_at: string;
 };
 
+export type GroupDefinition = {
+  id: string;
+  name: string;
+  description?: string | null;
+  repos: string[];
+  is_system?: boolean;
+};
+
+export type GroupRepoReport = {
+  full_name: string;
+  html_url: string;
+  prs: GitHubItem[];
+  issues: GitHubItem[];
+  tldr?: string | null;
+};
+
+export type GroupReportData = {
+  tldr: string | null;
+  repos: GroupRepoReport[];
+};
+
+export type StoredGroupReport = {
+  id: string;
+  groupId?: string | null;
+  name: string;
+  repos: string[];
+  timeframe: Timeframe;
+  data: GroupReportData;
+  generatedAt: string;
+  version: number;
+};
+
+export type DigestTarget =
+  | { kind: "repo"; repo: string; label: string }
+  | { kind: "group"; id?: string | null; name: string; repos: string[]; is_system?: boolean };
+
 // API Response types for progressive loading endpoints
 export type ReportSectionResponse = {
   prs?: GitHubItem[];

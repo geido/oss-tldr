@@ -1,3 +1,4 @@
+"""Diff explanation routes."""
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 
@@ -11,20 +12,28 @@ router = APIRouter()
 
 
 class PatchesRequest(BaseModel):
+    """Request for getting PR patches."""
+
     repo_url: str
     pull_request: str
 
 
 class PatchesResponse(BaseModel):
+    """Response containing PR patches."""
+
     patches: list[PatchItem]
 
 
 class DiffRequest(BaseModel):
+    """Request for explaining a diff."""
+
     file: str
     patch: str
 
 
 class DiffResponse(BaseModel):
+    """Response containing diff explanation."""
+
     explanation: str
 
 
@@ -32,6 +41,7 @@ class DiffResponse(BaseModel):
 async def get_patches(
     payload: PatchesRequest, auth: AuthenticatedRequest = Depends(get_current_user)
 ) -> PatchesResponse:
+    """Get patches for a pull request."""
     try:
         owner, repo = parse_repo_url(payload.repo_url)
         github_repo = get_repo(auth.github, owner, repo)
@@ -50,6 +60,7 @@ async def get_patches(
 async def get_diff(
     payload: DiffRequest, auth: AuthenticatedRequest = Depends(get_current_user)
 ) -> DiffResponse:
+    """Get AI explanation for a diff."""
     try:
         explanation: str = await explain_diff(payload.file, payload.patch)
 

@@ -2,13 +2,17 @@
 from __future__ import annotations
 
 from datetime import datetime
-
+from typing import TYPE_CHECKING
 
 from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from database.connection import Base
+
+if TYPE_CHECKING:
+    from database.models.report import Report
+    from database.models.user import User
 
 
 class UserReportAccess(Base):
@@ -24,7 +28,9 @@ class UserReportAccess(Base):
     report_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("reports.id", ondelete="CASCADE"), nullable=False
     )
-    accessed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    accessed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
 
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="accessed_reports")

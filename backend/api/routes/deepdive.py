@@ -1,3 +1,4 @@
+"""Deep dive analysis routes."""
 import asyncio
 from typing import cast
 
@@ -9,16 +10,15 @@ from pydantic import BaseModel
 
 from middleware.auth import AuthenticatedRequest, get_current_user
 from services.deepdive_generator import generate_deep_dive
-from services.github_client import (
-    get_pr_reviews,
-    get_repo,
-)
+from services.github_client import get_pr_reviews, get_repo
 from utils.url import parse_repo_url
 
 router = APIRouter()
 
 
 class DeepDiveRequest(BaseModel):
+    """Request for deep dive analysis."""
+
     repo_url: str
     issue: str
 
@@ -27,6 +27,7 @@ class DeepDiveRequest(BaseModel):
 async def get_deepdive(
     payload: DeepDiveRequest, auth: AuthenticatedRequest = Depends(get_current_user)
 ) -> StreamingResponse:
+    """Generate deep dive analysis for an issue or PR."""
     try:
         owner, repo_name = parse_repo_url(payload.repo_url)
         github_repo = get_repo(auth.github, owner, repo_name)
@@ -40,7 +41,6 @@ async def get_deepdive(
             else asyncio.sleep(0, result=cast(PaginatedList[PullRequestReview], []))
         )
 
-        # Await both in parallel
         comments, reviews = await asyncio.gather(comments_task, reviews_task)
 
         stream = generate_deep_dive(

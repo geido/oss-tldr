@@ -51,9 +51,30 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def init_db() -> None:
-    """Initialize database (create tables if they don't exist)."""
+    """Initialize database (create tables if they don't exist) and seed data."""
+    # Import models to ensure they're registered with Base.metadata
+    from database.models import (  # noqa: F401
+        User,
+        Repository,
+        Report,
+        UserRepository,
+        UserReportAccess,
+        Group,
+        GroupRepository,
+    )
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+    # Seed system groups from YAML files
+    from utils.group_config import seed_system_groups
+
+    async with AsyncSessionLocal() as session:
+        try:
+            await seed_system_groups(session)
+        except Exception as e:
+            print(f"⚠️ Failed to seed system groups: {e}")
+            await session.rollback()
 
 
 async def close_db() -> None:
